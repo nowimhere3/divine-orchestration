@@ -13,6 +13,8 @@ import { aspectTable, houseName, houseTables, node, planetTable, unavailableText
 import { regionMembers, renderInspection } from './inspector';
 import type { InspectorLunarLayer, InspectorLunarModel } from './inspector';
 import { parseElementKey } from '../knowledge';
+import { interpretNatalChart } from '../interpret';
+import type { NatalReading } from '../interpret';
 import {
   calculateDateOnlyMoonSummary,
   calculateLunarCycle,
@@ -27,6 +29,7 @@ import { mountLunarCard } from './lunar-card';
 import { mountProfiles } from './profile-panel';
 import type { ProfileController } from './profile-panel';
 import { mountExportStudio } from './export-studio';
+import { mountReadingPanel } from './reading-panel';
 import { mountZonePicker } from './zone-picker';
 
 type Readings = 'natal' | 'transit' | 'aspects' | 'houses';
@@ -89,6 +92,7 @@ export function mountObservatory(engine: EphemeraEngine) {
     state: null, cycle: null, sky: null, observerLabel: 'No birthplace coordinates',
     missingObserverReason: null, timeZone: 'UTC', dateOnlySummary: null,
   };
+  let natalReading: NatalReading | undefined;
   let transitChart: TimedChart | null = null;
   let provenance: SnapshotInput['engine'] = null;
   let birthEdited = false;
@@ -210,7 +214,7 @@ export function mountObservatory(engine: EphemeraEngine) {
     targets: targets(),
     referenceTt: selectedTt,
   }), signal);
-  const exportStudio = mountExportStudio(() => {
+  const exportStudio = mountExportStudio(engine, () => {
     if (frame) {
       cancelAnimationFrame(frame);
       redraw();
@@ -218,13 +222,20 @@ export function mountObservatory(engine: EphemeraEngine) {
     if (!natal || !transitChart) return null;
     const { utc, jdUt, jdTt } = transitChart.time;
     const selectedAt = { utc, jdUt, jdTt };
-    return { targets: targets(), input: {
+    return { targets: targets(), natalReading, input: {
       engine: provenance, aspectRules: createAspectRuleSet(), charts: [natal, transitChart],
       aspects: [...birthAspects, ...transitAspects],
       context: { selectedAt, referenceAt: selectedAt, eventSearch: null },
     } };
   }, signal, () => birthEdited && (attemptFailed || !birthDialog.open)
     ? 'Export is blocked because your new birth details have not been calculated. Open Edit birth details and calculate first.' : '');
+  const readingPanel = mountReadingPanel({
+    onSelectKey: select,
+    onEditBirth: () => {
+      if (!birthDialog.open) birthDialog.showModal();
+      byId('birth-date').focus();
+    },
+  }, signal);
   const lunarCard = mountLunarCard(engine, {
     onInspectMoon: () => select('transit/moon'),
     onObserverChange: () => showInspection(),
@@ -239,7 +250,9 @@ export function mountObservatory(engine: EphemeraEngine) {
       activeProfileId = name ? id : undefined;
       natal = { ...natal, label: name };
       exportStudio.invalidate();
+      refreshNatalReading();
       refreshContext();
+      showInspection();
     }
   }, signal, {
     activeId: () => activeProfileId,
@@ -253,6 +266,21 @@ export function mountObservatory(engine: EphemeraEngine) {
   });
 
   const houses = () => natal?.houses.status === 'available' ? natal.houses.value : null;
+  function refreshNatalReading() {
+    if (!natal) return;
+    natalReading = interpretNatalChart({
+      chart: natal,
+      positions: natalPoints,
+      aspects: birthAspects,
+      houses: houses(),
+      natalMoonState: natalLunarLayer.state,
+      dateOnlyMoonSummary: natalLunarLayer.dateOnlySummary ?? null,
+      engine,
+      isDemo: applied.demo,
+      birthSummary: applied.text,
+    });
+    readingPanel.update(natalReading);
+  }
   const birthSuffix = () => natal ? ' The wheel still shows the last calculated birth details.' : '';
 
   function showFold(candidates: readonly OffsetCandidate[]) {
@@ -393,6 +421,7 @@ export function mountObservatory(engine: EphemeraEngine) {
         : natalPoints.size === 0 ? unavailableText(natalFacts[0]?.position.status === 'unavailable' ? natalFacts[0].position.reason : '')
           : `Birth time resolved with offset ${resolved.offset.value}.`;
     applied = { demo: example, text: describeBirth(input, location || null, resolved.kind === 'resolved' ? resolved.offset.value : undefined) };
+    refreshNatalReading();
     refreshContext();
     profiles?.syncActive();
     if (!example) status.textContent = `Chart calculated for ${applied.text}. ${status.textContent}`;
@@ -442,6 +471,7 @@ export function mountObservatory(engine: EphemeraEngine) {
       moment: selectedLabel, birth: applied.text, demo: applied.demo, back: returnTo,
       position: layer === 'natal' ? natalPoints.get(id) : layer === 'transit' ? transitPoints.get(id) : undefined,
       lunar: buildLunarModel(),
+      natalReading,
     });
     if (active) [...inspection.querySelectorAll<HTMLButtonElement>('[data-select-key]')]
       .find(button => button.dataset.selectKey === active)?.focus({ preventScroll: true });

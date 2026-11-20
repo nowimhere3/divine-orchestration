@@ -1,13 +1,25 @@
 import { ANGLES } from './angles';
-import { ASPECTS } from './aspects';
-import { BODIES } from './bodies';
+import { ASPECT_META, ASPECTS } from './aspects';
+import { BODY_META, BODIES } from './bodies';
 import { CONCEPTS } from './concepts';
-import { HOUSES } from './houses';
-import { SIGNS } from './signs';
+import { HOUSE_META, HOUSES } from './houses';
+import { SIGN_META, SIGNS } from './signs';
+import type { AspectId } from '../domain/aspects';
+import type { HouseId, PlanetId } from '../domain/chart';
 import type { Entry, EntryKind } from './types';
 
 export type { Entry, EntryKind, Source, SourceId } from './types';
+export type { AspectMeta, AspectTone } from './aspects';
+export type { BodyMeta, BodyTier } from './bodies';
+export type { HouseGroup, HouseMeta } from './houses';
+export type { SignMeta, ZodiacElement, ZodiacMode } from './signs';
+export { ASPECT_META, BODY_META, HOUSE_META, SIGN_META };
 export { SOURCES, sourcesFor } from './sources';
+
+export const bodyMeta = (planetId: PlanetId) => BODY_META[planetId];
+export const signMeta = (index: number) => SIGN_META[((index % 12) + 12) % 12];
+export const houseMeta = (number: HouseId) => HOUSE_META[number - 1];
+export const aspectMeta = (aspect: AspectId) => ASPECT_META[aspect];
 
 /** What a selectable key refers to, beyond planets and aspect facts which the chart layer already names. */
 export type ElementRef =

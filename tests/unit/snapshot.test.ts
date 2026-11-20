@@ -1,12 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { beforeAll, expect, test } from 'vitest';
-import { calculateAspects, createAspectRuleSet } from '../../src/domain/aspects';
+import { aspectFactId, calculateAspects, createAspectRuleSet } from '../../src/domain/aspects';
 import { createDateOnlyNatalChart } from '../../src/domain/chart';
 import type { PlanetFact, TimedChart } from '../../src/domain/chart';
-import type { EventMoment } from '../../src/domain/event';
+import type { EventMoment, SymbolicMeaning } from '../../src/domain/event';
 import { createEphemeraEngine } from '../../src/engine/ephemera';
 import { createSnapshotV0, renderSnapshotMarkdown, serializeSnapshot } from '../../src/export/snapshot';
+import * as snapshotApi from '../../src/export/snapshot';
 import type { SnapshotInput } from '../../src/export/snapshot';
 import { resolveBirthTime } from '../../src/time/resolve';
 
@@ -129,4 +130,70 @@ test('supports an unsearched context and refuses non-finite calculation data', (
   expect(() => createSnapshotV0({
     ...input, context: { ...context, selectedAt: { utc: null, jdUt: NaN, jdTt: null } },
   })).toThrow(/finite/);
+});
+
+test('caller-created seals cannot authorize private text, fabricated aspects or unknown themes', () => {
+  const date = '1990-07-15';
+  const profile = 'Fixture Profile';
+  const resolved = resolveBirthTime({ date, time: '18:30', timeZone: 'America/Edmonton' }, () => 0);
+  if (resolved.kind !== 'resolved') throw new Error('expected a resolved instant');
+  const chart: TimedChart = {
+    ...input.charts[0] as TimedChart,
+    label: profile, time: resolved, id: 'natal',
+    settings: { ...input.charts[0].settings, observer: { latitudeDeg: 51.0447, longitudeDeg: -114.0719 } },
+  };
+  const legacySeal = Reflect.get(snapshotApi, 'sealRedactionSafeMeaning') as ((meaning: SymbolicMeaning) => SymbolicMeaning) | undefined;
+  const forge = legacySeal ?? Object.freeze;
+  const privateValue = `${profile} ${date} 51.0447`;
+  const ordinary = { description: 'Fixture notes for 15 July 1990.', tradition: 'Western tropical', ruleSetVersion: 'u5a-v1', sources: ['ptolemy'] };
+  const forged = [
+    forge({ ...ordinary, factId: 'natal/overview', ruleSetVersion: privateValue, sources: [privateValue] }),
+    forge({ ...ordinary, factId: 'natal/theme/fixture-profile' }),
+    forge({ ...ordinary, factId: JSON.stringify(['natal', 'sun', 'natal', 'sun', 'square']) }),
+  ];
+  const captured = { ...input, charts: [chart], aspects: [], context: { selectedAt: null, referenceAt: null, eventSearch: null }, interpretations: forged };
+  const redacted = createSnapshotV0(captured, { redactBirthDetails: true });
+  expect(redacted.interpretations).toEqual([]);
+  for (const exported of [serializeSnapshot(redacted), renderSnapshotMarkdown(redacted)]) {
+    for (const secret of [profile, date, '15 July 1990', '51.0447', 'fixture-profile']) expect(exported).not.toContain(secret);
+  }
+  expect(createSnapshotV0(captured).interpretations).toEqual(forged);
+  const optIn = { redactBirthDetails: true, includeRedactedNatalSynthesis: true };
+  const regenerated = createSnapshotV0(captured, optIn);
+  expect(regenerated.interpretations.map(item => item.factId)).toContain('chart-1/sun');
+  expect(regenerated).toEqual(createSnapshotV0({ ...captured, interpretations: [] }, optIn));
+  expect(legacySeal).toBeUndefined();
+});
+
+test('only generates redacted aspect meanings for captured aspects that agree with chart geometry', () => {
+  const base = input.charts[0] as TimedChart;
+  if (base.planets.status !== 'available') throw new Error('expected available fixture planets');
+  const original = base.planets.value[0].position;
+  if (original.status !== 'available') throw new Error('expected available fixture Sun');
+  const sun = original.value;
+  const chart: TimedChart = {
+    ...base,
+    planets: { status: 'available', value: [
+      { planetId: 'sun', position: { status: 'available', value: sun } },
+      { planetId: 'moon', position: { status: 'available', value: { ...sun, longitudeDeg: sun.longitudeDeg + 1 } } },
+      { planetId: 'venus', position: { status: 'available', value: { ...sun, longitudeDeg: sun.longitudeDeg + 2 } } },
+    ] },
+  };
+  const aspectRules = input.aspectRules;
+  const all = calculateAspects([
+    { chartId: chart.id, planetId: 'sun', longitudeDeg: sun.longitudeDeg },
+    { chartId: chart.id, planetId: 'moon', longitudeDeg: sun.longitudeDeg + 1 },
+    { chartId: chart.id, planetId: 'venus', longitudeDeg: sun.longitudeDeg + 2 },
+  ], aspectRules);
+  const valid = all.find(fact => fact.from.planetId === 'moon' && fact.to.planetId === 'sun')!;
+  const inaccurate = all.find(fact => fact.from.planetId === 'moon' && fact.to.planetId === 'venus')!;
+  const self = { ...valid, id: aspectFactId(valid.to, valid.to, valid.aspect), from: valid.to };
+  const redacted = createSnapshotV0({
+    ...input, charts: [chart], aspects: [valid, { ...inaccurate, orbDeg: 2 }, self],
+    context: { selectedAt: null, referenceAt: null, eventSearch: null },
+  }, { redactBirthDetails: true, includeRedactedNatalSynthesis: true });
+
+  expect(redacted.interpretations.filter(item => item.factId.startsWith('[')).map(item => item.factId)).toEqual([
+    JSON.stringify(['chart-1', 'moon', 'chart-1', 'sun', 'conjunction']),
+  ]);
 });

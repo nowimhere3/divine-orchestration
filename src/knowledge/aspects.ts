@@ -1,4 +1,45 @@
+import type { AspectId } from '../domain/aspects';
 import type { Entry, SourceId } from './types';
+
+export type AspectTone = 'blend' | 'support' | 'tense';
+
+export interface AspectMeta {
+  readonly id: AspectId;
+  readonly angleDeg: number;
+  readonly symbol: string;
+  readonly tone: AspectTone;
+  readonly toneLabel: string;
+  readonly natalDynamic: string;
+  readonly guidancePhrase: string;
+}
+
+export const ASPECT_META: Readonly<Record<AspectId, AspectMeta>> = {
+  conjunction: {
+    id: 'conjunction', angleDeg: 0, symbol: '☌', tone: 'blend', toneLabel: 'Blending',
+    natalDynamic: 'fuses and amplifies both themes so they operate together as a single focus',
+    guidancePhrase: 'treating both impulses as linked rather than trying to separate them',
+  },
+  sextile: {
+    id: 'sextile', angleDeg: 60, symbol: '⚹', tone: 'support', toneLabel: 'Supportive',
+    natalDynamic: 'creates a cooperative opening that rewards deliberate engagement',
+    guidancePhrase: 'leaning into the opportunity actively so the synergy stays practical',
+  },
+  square: {
+    id: 'square', angleDeg: 90, symbol: '□', tone: 'tense', toneLabel: 'Tense',
+    natalDynamic: 'introduces creative friction and competing priorities that motivate adjustment',
+    guidancePhrase: 'channeling the tension into concrete action rather than letting either side stall the other',
+  },
+  trine: {
+    id: 'trine', angleDeg: 120, symbol: '△', tone: 'support', toneLabel: 'Supportive',
+    natalDynamic: 'supports an easy, natural flow where the two themes reinforce each other',
+    guidancePhrase: 'using this natural ease intentionally instead of taking it for granted',
+  },
+  opposition: {
+    id: 'opposition', angleDeg: 180, symbol: '☍', tone: 'tense', toneLabel: 'Tense',
+    natalDynamic: 'sets up a clear polarity that asks for perspective, awareness and balance',
+    guidancePhrase: 'holding room for both ends of the axis rather than swinging to only one side',
+  },
+};
 
 const sources: SourceId[] = ['wiki-aspect', 'ptolemy', 'britannica-astrology', 'wiki-symbols'];
 

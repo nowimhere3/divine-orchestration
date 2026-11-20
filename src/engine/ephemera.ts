@@ -159,6 +159,12 @@ function inSearchWindow(eventJd: number, startJd: number, direction: 1 | -1, day
   return within(eventJd, { start: Math.min(startJd, endJd), end: Math.max(startJd, endJd) });
 }
 
+const localEngines = new WeakSet<EphemeraEngine>();
+
+export function isLocalEphemeraEngine(engine: EphemeraEngine | undefined): engine is EphemeraEngine {
+  return engine !== undefined && localEngines.has(engine);
+}
+
 /** Instantiate a private engine from the approved package's embedded 1as WASM bytes. */
 export async function createEphemeraEngine(wasm: BufferSource | WebAssembly.Module): Promise<EphemeraEngine> {
   const eph = await fromWasm(wasm);
@@ -173,7 +179,7 @@ export async function createEphemeraEngine(wasm: BufferSource | WebAssembly.Modu
     return eph.ttToUt(jdTt, year + (jdTt - eph.julianDate(year, 1, 1)) / 365.25);
   }
 
-  return {
+  const instance: EphemeraEngine = {
     modelDeltaTSeconds(deltaTYear) {
       if (!Number.isFinite(deltaTYear)) throw new RangeError('Delta-T model year must be finite.');
       return eph.deltaT(deltaTYear);
@@ -332,4 +338,6 @@ export async function createEphemeraEngine(wasm: BufferSource | WebAssembly.Modu
       });
     },
   };
+  localEngines.add(instance);
+  return Object.freeze(instance);
 }

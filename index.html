@@ -136,6 +136,21 @@
             </section>
           </aside>
         </div>
+        <section id="personal-reading" class="panel reading-panel" aria-labelledby="reading-heading">
+          <div class="reading-panel-head">
+            <div>
+              <p class="eyebrow">Natal interpretation · Local-first</p>
+              <h2 id="reading-heading" tabindex="-1">Personal birth-chart reading</h2>
+              <p id="reading-subtitle" class="lede">Synthesize your Sun, Moon, Ascendant, chart ruler, houses, aspects and themes directly from calculated chart facts.</p>
+            </div>
+            <div class="reading-panel-actions">
+              <button id="interpret-birth-btn" type="button" class="reading-trigger" aria-expanded="false" aria-controls="personal-reading-body">Interpret my birth chart</button>
+              <button id="reading-close" type="button" class="secondary" hidden>Hide reading</button>
+            </div>
+          </div>
+          <p id="reading-status" class="sr-only" role="status"></p>
+          <div id="personal-reading-body" class="reading-body" hidden></div>
+        </section>
         <section class="panel readings" aria-labelledby="data-heading">
           <div class="reading-header">
             <h2 id="data-heading">Chart data</h2>
@@ -273,6 +288,14 @@
                   <label>Maximum events<select id="export-limit"><option value="12">12</option><option value="24">24</option><option value="48">48</option></select></label>
                 </div>
               </div>
+              <fieldset class="choice-group">
+                <legend>Local natal synthesis (optional)</legend>
+                <div class="choice">
+                  <input type="checkbox" id="export-include-natal" aria-describedby="export-natal-hint">
+                  <label for="export-include-natal">Include local natal symbolic synthesis</label>
+                  <p id="export-natal-hint" class="hint">Adds structured symbolic summaries from this app’s local reading to the snapshot’s interpretations list. Never includes names, birth dates or coordinates when Redacted is selected.</p>
+                </div>
+              </fieldset>
               <button type="submit" class="primary">Prepare export</button>
             </fieldset>
             <button id="export-cancel" type="button" hidden>Cancel export search</button>
@@ -298,6 +321,11 @@
             <section class="prompt-card" aria-labelledby="prompt-heading">
               <h3 id="prompt-heading">Reusable interpretation prompt</h3>
               <p class="hint">Paste this first in your AI conversation, then paste the snapshot. It asks the assistant to stay with the calculated facts.</p>
+              <fieldset class="segmented format-row" aria-label="Prompt focus">
+                <legend>Prompt focus</legend>
+                <label class="seg"><input type="radio" name="export-prompt-preset" value="facts" checked><span>Strict facts</span></label>
+                <label class="seg"><input type="radio" name="export-prompt-preset" value="natal"><span>Deeper natal reading</span></label>
+              </fieldset>
               <blockquote id="interpretation-prompt"></blockquote>
               <button id="export-copy-prompt" type="button">Copy interpretation prompt</button>
             </section>

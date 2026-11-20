@@ -1,8 +1,11 @@
 import { PLANET_IDS } from '../domain/chart';
+import type { EphemeraEngine } from '../engine/ephemera';
 import { selectEventContext } from '../export/event-selection';
 import type { EventSelection } from '../export/event-selection';
 import { createSnapshotV0, renderSnapshotMarkdown, serializeSnapshot } from '../export/snapshot';
 import type { SnapshotInput, SnapshotV0 } from '../export/snapshot';
+import { natalSymbolicMeanings } from '../interpret';
+import type { NatalReading } from '../interpret';
 import { startEventSearch } from '../search/client';
 import type { EventSearchJob } from '../search/client';
 import type { FixedNatalPoint } from '../search/events';
@@ -16,8 +19,15 @@ export const interpretationPrompt = [
   'Do not invent planetary positions, times, events, birth details or missing interpretations. If the data is insufficient, say what is missing.',
 ].join(' ');
 
+export const natalDeepDivePrompt = [
+  'Using only the calculated natal chart facts (and any local symbolic synthesis) supplied in this Divine Orchestration snapshot, offer a thoughtful, personalized birth-chart synthesis.',
+  'Organize the reading around core placements (Sun, Moon, Ascendant and chart ruler when available), major multi-factor themes (element/modality balance, stelliums, tightest aspects) and constructive reflection questions.',
+  'Keep astronomical measurements clearly distinct from traditional astrological symbolism. Never present symbolism as guaranteed prediction, never invent missing houses, angles, degrees or birth details, and note any unavailable data honestly.',
+].join(' ');
+
 export function mountExportStudio(
-  capture: () => { input: SnapshotInput; targets: readonly FixedNatalPoint[] } | null,
+  engine: EphemeraEngine,
+  capture: () => { input: SnapshotInput; targets: readonly FixedNatalPoint[]; natalReading?: NatalReading } | null,
   signal: AbortSignal,
   /** Returns a reason when the chart on screen is not the one the person has entered, so nothing is exported. */
   guard: () => string = () => '',
@@ -25,6 +35,7 @@ export function mountExportStudio(
   const form = byId<HTMLFormElement>('export-form');
   const controls = byId<HTMLFieldSetElement>('export-controls');
   const options = byId('export-event-options');
+  const includeNatal = byId<HTMLInputElement>('export-include-natal');
   const stepTwo = byId('export-step-two');
   const summary = byId('export-summary');
   const moment = byId('export-moment');
@@ -32,6 +43,7 @@ export function mountExportStudio(
   const privacy = () => choice('export-privacy');
   const context = () => choice('export-context');
   const format = () => choice('export-format');
+  const promptPreset = () => choice('export-prompt-preset');
   const preview = byId<HTMLTextAreaElement>('export-preview');
   const status = byId('export-status');
   const cancel = byId<HTMLButtonElement>('export-cancel');
@@ -39,6 +51,14 @@ export function mountExportStudio(
   const actions = ['export-copy', 'export-md', 'export-json'].map(id => byId<HTMLButtonElement>(id));
   let snapshot: SnapshotV0 | undefined;
   let job: EventSearchJob | undefined;
+
+  function activePrompt() {
+    return promptPreset() === 'natal' ? natalDeepDivePrompt : interpretationPrompt;
+  }
+
+  function showPrompt() {
+    byId('interpretation-prompt').textContent = activePrompt();
+  }
 
   function showPreview() {
     preview.value = !snapshot ? '' : format() === 'json' ? serializeSnapshot(snapshot) : renderSnapshotMarkdown(snapshot);
@@ -139,16 +159,26 @@ export function mountExportStudio(
         if (active !== job) return;
         input = { ...input, context: { ...input.context, ...selectEventContext(result, selection) } };
       }
-      snapshot = createSnapshotV0(input, { redactBirthDetails });
+      if (includeNatal.checked && !redactBirthDetails && captured.natalReading) {
+        const natalChartId = input.charts.find(c => c.kind === 'natal')?.id ?? 'natal';
+        input = { ...input, interpretations: natalSymbolicMeanings(captured.natalReading, natalChartId) };
+      }
+      snapshot = createSnapshotV0(input, {
+        redactBirthDetails, includeRedactedNatalSynthesis: includeNatal.checked, dateOnlyEngine: engine,
+      });
       showPreview();
       const eventSummary = input.context.eventSummary;
+      const synthCount = snapshot.interpretations.length;
       status.textContent = eventSummary
         ? `Preview ready. Includes ${eventSummary.includedEvents} of ${eventSummary.totalEvents} events. Search status: ${eventSummary.status}.`
-        : 'Preview ready for the selected moment.';
+        : synthCount
+          ? `Preview ready for the selected moment, with ${synthCount} local natal symbolic notes.`
+          : 'Preview ready for the selected moment.';
       summary.replaceChildren(...[
         redactBirthDetails ? 'Redacted' : 'Full',
         eventSummary ? `${eventSummary.includedEvents} of ${eventSummary.totalEvents} events` : 'Selected moment only',
         eventSummary ? `Search ${eventSummary.status}` : '',
+        synthCount ? `${synthCount} symbolic notes` : '',
         `${preview.value.length.toLocaleString('en')} characters`,
       ].filter(Boolean).map(text => Object.assign(document.createElement('li'), { className: 'chip', textContent: text })));
       showStep(2, true);
@@ -173,8 +203,11 @@ export function mountExportStudio(
       status.textContent = 'Snapshot downloaded.';
     }, { signal });
   }
-  byId('interpretation-prompt').textContent = interpretationPrompt;
-  byId('export-copy-prompt').addEventListener('click', () => void copy(interpretationPrompt, 'Interpretation prompt copied.'), { signal });
+  for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="export-prompt-preset"]')) {
+    radio.addEventListener('change', showPrompt, { signal });
+  }
+  showPrompt();
+  byId('export-copy-prompt').addEventListener('click', () => void copy(activePrompt(), 'Interpretation prompt copied.'), { signal });
   signal.addEventListener('abort', () => job?.cancel(), { once: true });
   new MutationObserver(showMoment).observe(byId('selected-epoch'), { childList: true, characterData: true, subtree: true });
   const relative = document.getElementById('time-relative');

@@ -1,4 +1,93 @@
+import type { PlanetId } from '../domain/chart';
 import type { Entry, SourceId } from './types';
+
+export type BodyTier = 'luminary' | 'personal' | 'social' | 'outer';
+
+export interface BodyMeta {
+  readonly id: PlanetId;
+  readonly tier: BodyTier;
+  /** Plain-language functional domain of the body in a natal chart. */
+  readonly drivePhrase: string;
+  /** Short verb-object summary used in synthesis sentences. */
+  readonly focusPhrase: string;
+  /** True for outer planets whose sign reflects a generation rather than individual temperament. */
+  readonly generationalSign: boolean;
+  /** Traditional nuance when retrograde in a natal chart. */
+  readonly retrogradeNuance: string;
+}
+
+export const BODY_META: Readonly<Record<PlanetId, BodyMeta>> = {
+  sun: {
+    id: 'sun', tier: 'luminary',
+    drivePhrase: 'core identity, purpose and conscious vitality',
+    focusPhrase: 'how you express your core identity and sense of purpose',
+    generationalSign: false,
+    retrogradeNuance: '',
+  },
+  moon: {
+    id: 'moon', tier: 'luminary',
+    drivePhrase: 'emotional instincts, habits and need for security',
+    focusPhrase: 'how you process feelings, seek comfort and respond instinctively',
+    generationalSign: false,
+    retrogradeNuance: '',
+  },
+  mercury: {
+    id: 'mercury', tier: 'personal',
+    drivePhrase: 'thinking, learning and everyday communication',
+    focusPhrase: 'how you gather ideas, reason and put thoughts into words',
+    generationalSign: false,
+    retrogradeNuance: 'Natal Mercury retrograde is traditionally linked with an inward, reflective processing style—reviewing ideas thoroughly before speaking or deciding.',
+  },
+  venus: {
+    id: 'venus', tier: 'personal',
+    drivePhrase: 'affection, personal values and aesthetic taste',
+    focusPhrase: 'how you form bonds, show care and decide what you cherish',
+    generationalSign: false,
+    retrogradeNuance: 'Natal Venus retrograde is traditionally linked with private, self-defined values and a more selective or contemplative approach to closeness.',
+  },
+  mars: {
+    id: 'mars', tier: 'personal',
+    drivePhrase: 'drive, initiative and how effort is directed',
+    focusPhrase: 'how you take action, pursue goals and meet friction',
+    generationalSign: false,
+    retrogradeNuance: 'Natal Mars retrograde is traditionally linked with strategic, self-directed drive—building momentum internally before committing to overt action.',
+  },
+  jupiter: {
+    id: 'jupiter', tier: 'social',
+    drivePhrase: 'growth, perspective and search for wider meaning',
+    focusPhrase: 'where you look for expansion, learning and broader horizons',
+    generationalSign: false,
+    retrogradeNuance: 'Natal Jupiter retrograde is traditionally read as drawing optimism and meaning from personal conviction rather than external approval.',
+  },
+  saturn: {
+    id: 'saturn', tier: 'social',
+    drivePhrase: 'structure, responsibility and long-term endurance',
+    focusPhrase: 'where you build discipline, meet limits and work toward earned mastery',
+    generationalSign: false,
+    retrogradeNuance: 'Natal Saturn retrograde is traditionally associated with strong self-accountability and learning to define your own standards of authority.',
+  },
+  uranus: {
+    id: 'uranus', tier: 'outer',
+    drivePhrase: 'independence, originality and appetite for change',
+    focusPhrase: 'where you seek freedom, fresh approaches and room to diverge from convention',
+    generationalSign: true,
+    retrogradeNuance: 'Natal Uranus retrograde is traditionally linked with quiet, internal originality that surfaces when established patterns feel too narrow.',
+  },
+  neptune: {
+    id: 'neptune', tier: 'outer',
+    drivePhrase: 'imagination, empathy and longing for ideals',
+    focusPhrase: 'where intuition, creative vision and sensitivity to atmosphere are heightened',
+    generationalSign: true,
+    retrogradeNuance: 'Natal Neptune retrograde is traditionally associated with a rich private imagination and a gradual, discerning relationship with ideals.',
+  },
+  pluto: {
+    id: 'pluto', tier: 'outer',
+    drivePhrase: 'depth, resilience and lasting transformation',
+    focusPhrase: 'where intensity, renewal and deep structural change tend to concentrate',
+    generationalSign: true,
+    retrogradeNuance: 'Natal Pluto retrograde is traditionally read as carrying transformation inward first—working through deep shifts privately before they show outwardly.',
+  },
+};
 
 /** The ten chart bodies, keyed by the same ids as the calculation layer. */
 const lights: SourceId[] = ['wiki-planets-astrology', 'ptolemy', 'wiki-symbols'];

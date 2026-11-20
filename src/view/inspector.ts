@@ -1,5 +1,7 @@
 import type { AspectFact } from '../domain/aspects';
 import type { HouseFacts, PlanetId, PlanetPosition } from '../domain/chart';
+import { inspectorPersonalNatal } from '../interpret';
+import type { InspectorPersonalNote, NatalReading } from '../interpret';
 import { aspectEntry, bodyEntry, conceptEntry, entryById, entryForRef, houseEntry, parseElementKey, signEntry, sourcesFor } from '../knowledge';
 import type { ElementRef, Entry } from '../knowledge';
 import { formatLunarTimestamp } from '../lunar';
@@ -61,6 +63,8 @@ export interface InspectorModel {
   /** Set when a glossary concept was opened from another selection. */
   back?: { key: string; label: string };
   lunar?: InspectorLunarModel;
+  /** Personalized natal interpretation for concise "In this chart" context. */
+  natalReading?: NatalReading;
 }
 
 export const glyph = (id: PlanetId, layer: string) => {
@@ -377,6 +381,34 @@ function renderLunarInspectionBlock(layer: 'natal' | 'transit', info: InspectorL
   return [section];
 }
 
+function personalBlock(note: InspectorPersonalNote | null): HTMLElement[] {
+  if (!note) return [];
+  const box = node('section');
+  box.className = 'inspect-personal';
+  box.setAttribute('aria-label', note.heading);
+  const top = node('div');
+  top.className = 'inspect-personal-head';
+  top.append(node('h4', note.heading), chip(note.factBadge, 'chip-quiet'));
+  box.append(top);
+  if (note.sensitivityNote) {
+    box.append(Object.assign(node('p', note.sensitivityNote), { className: 'reading-caution' }));
+  }
+  box.append(
+    Object.assign(node('p', note.synthesis), { className: 'inspect-personal-prose' }),
+    Object.assign(node('p', `Traditional basis: ${note.symbolismNote}`), { className: 'quiet-note' }),
+  );
+  const clickable = note.citations.filter(c => c.selectKey);
+  if (clickable.length) {
+    const links = node('div');
+    links.className = 'inspect-personal-links';
+    for (const cite of clickable) {
+      links.append(jump([cite.label], cite.selectKey!, `Inspect ${cite.label}`, 'concept-link'));
+    }
+    box.append(links);
+  }
+  return [box];
+}
+
 function planetView(model: InspectorModel, layer: 'natal' | 'transit', id: PlanetId, position: PlanetPosition) {
   const sign = Math.floor(position.longitudeDeg / 30) % 12;
   const signMark = node('span', `${signGlyphs[sign]}︎`);
@@ -400,8 +432,9 @@ function planetView(model: InspectorModel, layer: 'natal' | 'transit', id: Plane
   const lunarBlocks = id === 'moon'
     ? renderLunarInspectionBlock(layer, layer === 'natal' ? model.lunar?.natal : model.lunar?.transit)
     : [];
+  const personal = layer === 'natal' ? personalBlock(inspectorPersonalNatal(model.natalReading, model.key)) : [];
   const related = relationList('Aspects', model.related, fact => `to ${refLabel(pointKey(fact.from) === model.key ? fact.to : fact.from)}`, 'No major aspects within orb.');
-  return [head, sectionNav(), ...(entry ? [meaning(entry)] : []),
+  return [head, sectionNav(), ...(entry ? [meaning(entry, personal)] : []),
     facts(layer === 'natal' ? natalContext(model) : `${momentContext(model)} House numbers are the natal houses.`, [motion, details(rows), ...lunarBlocks, explore, related])];
 }
 
@@ -434,7 +467,8 @@ function aspectView(model: InspectorModel, fact: AspectFact) {
   const everyOne = `All ${aspectEntry(fact.aspect)?.name.toLowerCase()}s in this chart`;
   all.append(jump([everyOne], `aspect/${fact.aspect}`, everyOne, 'concept-link'));
   const crossing = fact.from.chartId !== fact.to.chartId;
-  return [pair, title, fit, sectionNav(), ...(entry ? [meaning(entry, [themes])] : []),
+  const personal = !crossing ? personalBlock(inspectorPersonalNatal(model.natalReading, fact.id)) : [];
+  return [pair, title, fit, sectionNav(), ...(entry ? [meaning(entry, [...personal, themes])] : []),
     facts(crossing ? `${momentContext(model)} A transiting planet against a natal planet.` : `${natalContext(model)} Both planets are natal.`, [details([
       ['Separation', degrees(fact.separationDeg)], ['Exact angle', degrees(fact.exactAngleDeg)],
       ['Orb', degrees(fact.orbDeg)], ['Allowed orb', degrees(fact.allowedOrbDeg)],
@@ -493,7 +527,8 @@ function angleView(model: InspectorModel, which: 'asc' | 'mc') {
   const rows = [[entry.longName ?? entry.name, signPosition(longitude)], ['Longitude', degrees(longitude)],
     [which === 'asc' ? 'Descendant' : 'Imum Coeli', signPosition(opposite)], ['In house', String(natalHouse(longitude, houses) ?? '—')],
     ['House system', houseSystemLine(model, houses)]];
-  return [head, sectionNav(), meaning(entry), facts(natalContext(model), [details(rows)])];
+  const personal = personalBlock(inspectorPersonalNatal(model.natalReading, `angle/${which}`));
+  return [head, sectionNav(), meaning(entry, personal), facts(natalContext(model), [details(rows)])];
 }
 
 function aspectTypeView(model: InspectorModel, aspect: keyof typeof aspectAngles) {

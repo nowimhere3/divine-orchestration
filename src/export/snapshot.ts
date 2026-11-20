@@ -1,7 +1,12 @@
-import { aspectFactId, createAspectRuleSet } from '../domain/aspects';
+import { aspectFactId, calculateAspects, createAspectRuleSet } from '../domain/aspects';
 import type { AspectFact, AspectRuleSetV0 } from '../domain/aspects';
+import { PLANET_IDS } from '../domain/chart';
 import type { Chart, ChartWarning, PlanetRef } from '../domain/chart';
 import type { AstrologyEvent, EventMoment, SymbolicMeaning } from '../domain/event';
+import { isLocalEphemeraEngine } from '../engine/ephemera';
+import type { EphemeraEngine } from '../engine/ephemera';
+import { interpretNatalChart, natalSymbolicMeanings } from '../interpret/natal';
+import { availablePositions, orderedCusps } from '../view/chart-data';
 
 export interface SnapshotContext {
   readonly selectedAt: EventMoment | null;
@@ -60,6 +65,14 @@ export interface SnapshotInput {
   readonly charts: readonly Chart[];
   readonly aspects: readonly AspectFact[];
   readonly context: SnapshotContext;
+  /** Caller-provided meanings are accepted in full exports only. */
+  readonly interpretations?: readonly SymbolicMeaning[];
+}
+
+interface SnapshotOptions {
+  readonly redactBirthDetails?: boolean;
+  readonly includeRedactedNatalSynthesis?: boolean;
+  readonly dateOnlyEngine?: EphemeraEngine;
 }
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -93,8 +106,56 @@ function redactEvent(event: AstrologyEvent, id: string, ref: (point: PlanetRef) 
   };
 }
 
+/** Derive every exported meaning from captured geometry and the built-in natal templates. */
+function redactedNatalMeanings(
+  chart: Chart,
+  safeChartId: string,
+  capturedAspects: readonly AspectFact[],
+  rules: AspectRuleSetV0,
+  engine: EphemeraEngine | undefined,
+): readonly SymbolicMeaning[] {
+  if (chart.time.kind === 'unknown-time' && !isLocalEphemeraEngine(engine)) return [];
+  const isLongitude = (value: number) => Number.isFinite(value) && value >= 0 && value < 360;
+  const available = availablePositions(chart.planets.status === 'available' ? chart.planets.value : []);
+  const positions = new Map(PLANET_IDS.flatMap(planetId => {
+    const point = available.get(planetId);
+    return point && isLongitude(point.longitudeDeg) && typeof point.retrograde === 'boolean'
+      ? [[planetId, point] as const] : [];
+  }));
+  const candidate = chart.houses.status === 'available' ? chart.houses.value : null;
+  const houses = candidate && ['WholeSign', 'Placidus', 'Porphyry'].includes(candidate.effectiveSystem)
+    && candidate.cusps.every((cusp, index) => cusp.houseId === index + 1)
+    && orderedCusps(candidate.cusps.map(cusp => cusp.longitudeDeg))
+    && isLongitude(candidate.ascendantDeg) && isLongitude(candidate.midheavenDeg)
+    ? candidate : null;
+
+  const chartId = 'natal';
+  const capturedById = new Map(capturedAspects.map(fact => [fact.id, fact]));
+  const aspects = calculateAspects([...positions].map(([planetId, point]) =>
+    ({ chartId, planetId, longitudeDeg: point.longitudeDeg })), rules).filter(expected => {
+    const id = aspectFactId(
+      { chartId: safeChartId, planetId: expected.from.planetId },
+      { chartId: safeChartId, planetId: expected.to.planetId },
+      expected.aspect,
+    );
+    const captured = capturedById.get(id);
+    return captured && captured.separationDeg === expected.separationDeg && captured.orbDeg === expected.orbDeg
+      && captured.allowedOrbDeg === expected.allowedOrbDeg && captured.exactAngleDeg === expected.exactAngleDeg
+      && captured.ruleSetVersion === expected.ruleSetVersion;
+  });
+
+  const reading = interpretNatalChart({
+    chart: { ...chart, id: chartId, label: null, settings: { zodiac: 'tropical', requestedHouseSystem: null, observer: null } },
+    positions, houses, aspects, engine,
+    natalMoonState: null, dateOnlyMoonSummary: null, isDemo: false, birthSummary: '',
+  });
+  return natalSymbolicMeanings(reading, safeChartId);
+}
+
 /** Redaction omits exact epochs, birth inputs, chart labels, location and application IDs. */
-export function createSnapshotV0(input: SnapshotInput, { redactBirthDetails = false } = {}): SnapshotV0 {
+export function createSnapshotV0(input: SnapshotInput, {
+  redactBirthDetails = false, includeRedactedNatalSynthesis = false, dateOnlyEngine,
+}: SnapshotOptions = {}): SnapshotV0 {
   if (input.aspectRules.version !== 0) throw new RangeError('Unsupported snapshot aspect rule set.');
   const idMap = new Map(input.charts.map((chart, index) =>
     [chart.id, redactBirthDetails ? `chart-${index + 1}` : chart.id] as const,
@@ -149,12 +210,19 @@ export function createSnapshotV0(input: SnapshotInput, { redactBirthDetails = fa
       }),
     },
   };
+  const natal = redactBirthDetails && includeRedactedNatalSynthesis
+    ? input.charts.find(chart => chart.kind === 'natal') : undefined;
+  const interpretations = redactBirthDetails
+    ? natal ? redactedNatalMeanings(natal, idMap.get(natal.id)!, aspects, input.aspectRules, dateOnlyEngine) : []
+    : (input.interpretations ?? []).map(({ factId, tradition, ruleSetVersion, description, sources }) =>
+      ({ factId, tradition, ruleSetVersion, description, sources: [...sources] }));
+
   const snapshot: SnapshotV0 = {
     schema: 'divine-orchestration/snapshot', schemaVersion: 0,
     privacy: redactBirthDetails ? 'birth-details-redacted' : 'full',
     engine: input.engine,
     aspectRules: createAspectRuleSet(input.aspectRules.orbsDeg),
-    charts, aspects, context, interpretations: [],
+    charts, aspects, context, interpretations,
   };
   // Copy so later edits to the source profile cannot change a captured export.
   return canonicalJson(snapshot) as unknown as SnapshotV0;
