@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:divine-orchestration:snapshot:v0",
+  "title": "Divine Orchestration snapshot v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schemaVersion", "privacy", "engine", "aspectRules", "charts", "aspects", "context", "interpretations"],
+  "properties": {
+    "schema": {"const": "divine-orchestration/snapshot"},
+    "schemaVersion": {"const": 0},
+    "privacy": {"enum": ["full", "birth-details-redacted"]},
+    "engine": {"oneOf": [{"$ref": "#/$defs/engine"}, {"type": "null"}]},
+    "aspectRules": {"$ref": "#/$defs/aspectRules"},
+    "charts": {"type": "array", "items": {"$ref": "#/$defs/chart"}},
+    "aspects": {"type": "array", "items": {"$ref": "#/$defs/aspectFact"}},
+    "context": {"$ref": "#/$defs/context"},
+    "interpretations": {"type": "array", "items": {"$ref": "#/$defs/symbolicMeaning"}}
+  },
+  "allOf": [{"if": {"properties": {"privacy": {"const": "birth-details-redacted"}}}, "then": {"properties": {"charts": {"items": {"properties": {"label": {"const": null}, "time": {"const": null}, "settings": {"properties": {"observer": {"const": null}}}}}}, "context": {"properties": {"selectedAt": {"const": null}, "referenceAt": {"const": null}}}}}, "else": {"properties": {"charts": {"items": {"properties": {"time": {"not": {"type": "null"}}}}}}}}],
+  "$defs": {
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "dataMode", "frame"],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"},
+        "dataMode": {"type": "string"},
+        "frame": {"type": "string"}
+      }
+    },
+    "aspectRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "orbsDeg"],
+      "properties": {
+        "version": {"const": 0},
+        "orbsDeg": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["conjunction", "sextile", "square", "trine", "opposition"],
+          "properties": {"conjunction": {"type": "number", "minimum": 0, "maximum": 180}, "sextile": {"type": "number", "minimum": 0, "maximum": 180}, "square": {"type": "number", "minimum": 0, "maximum": 180}, "trine": {"type": "number", "minimum": 0, "maximum": 180}, "opposition": {"type": "number", "minimum": 0, "maximum": 180}}
+        }
+      }
+    },
+    "unavailable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reason"],
+      "properties": {
+        "status": {"const": "unavailable"},
+        "reason": {
+          "enum": ["unknown-birth-time", "missing-location", "invalid-input", "outside-coverage", "unsupported-body", "calculation-unavailable"]
+        }
+      }
+    },
+    "resolvedTime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "input", "calendar", "utc", "historicalUt1Iso", "wallTimeResolutionSeconds", "jdUt", "jdTt", "deltaTYear", "deltaTSeconds", "deltaTSource", "taiMinusUtcSeconds", "leapSecond", "offset", "warnings"],
+      "properties": {
+        "kind": {"const": "resolved"},
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["date", "time"],
+          "properties": {"date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"}, "time": {"type": "string", "pattern": "^\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,3})?)?$"}, "timeZone": {"type": "string"}, "offsetOverride": {"type": "string"}, "disambiguation": {"enum": ["earlier", "later"]}}
+        },
+        "calendar": {"const": "proleptic-gregorian"},
+        "utc": {"oneOf": [{"type": "string"}, {"type": "null"}]},
+        "historicalUt1Iso": {"oneOf": [{"type": "string"}, {"type": "null"}]},
+        "wallTimeResolutionSeconds": {"enum": [60, 1, 0.1, 0.01, 0.001]},
+        "jdUt": {"type": "number"},
+        "jdTt": {"type": "number"},
+        "deltaTYear": {"type": "number"},
+        "deltaTSeconds": {"type": "number"},
+        "deltaTSource": {"const": "ephemera-model"},
+        "taiMinusUtcSeconds": {"oneOf": [{"type": "number"}, {"type": "null"}]},
+        "leapSecond": {"type": "boolean"},
+        "offset": {"$ref": "#/$defs/offset"},
+        "warnings": {
+          "type": "array",
+          "items": {"enum": ["historical-zone-offset-uncertain", "offset-override-differs-from-zone", "pre-utc-ut1-approximation", "modeled-delta-t", "future-utc-assumption"]}
+        }
+      }
+    },
+    "unknownTime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "input", "calendar"],
+      "properties": {
+        "kind": {"const": "unknown-time"},
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["date", "time"],
+          "properties": {"date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"}, "time": {"const": null}, "timeZone": {"type": "string"}, "offsetOverride": {"type": "string"}, "disambiguation": {"enum": ["earlier", "later"]}}
+        },
+        "calendar": {"const": "proleptic-gregorian"}
+      }
+    },
+    "offset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "seconds", "source", "certainty", "zone", "transition", "foldChoice"],
+      "properties": {
+        "value": {"type": "string"},
+        "seconds": {"type": "number"},
+        "source": {"enum": ["iana-runtime", "user-override"]},
+        "certainty": {"enum": ["runtime-zone-data", "historical-estimate", "user-supplied"]},
+        "zone": {"oneOf": [{"type": "string"}, {"type": "null"}]},
+        "transition": {"oneOf": [{"enum": ["unique", "fold", "gap"]}, {"type": "null"}]},
+        "foldChoice": {"oneOf": [{"enum": ["earlier", "later"]}, {"type": "null"}]}
+      }
+    },
+    "planetId": {
+      "enum": ["sun", "moon", "mercury", "venus", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto"]
+    },
+    "planetRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chartId", "planetId"],
+      "properties": {"chartId": {"type": "string"}, "planetId": {"$ref": "#/$defs/planetId"}}
+    },
+    "planetPosition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["longitudeDeg", "latitudeDeg", "distanceAu", "longitudeSpeedDegPerDay", "latitudeSpeedDegPerDay", "distanceSpeedAuPerDay", "retrograde"],
+      "properties": {
+        "longitudeDeg": {"type": "number"},
+        "latitudeDeg": {"type": "number"},
+        "distanceAu": {"type": "number"},
+        "longitudeSpeedDegPerDay": {"type": "number"},
+        "latitudeSpeedDegPerDay": {"type": "number"},
+        "distanceSpeedAuPerDay": {"type": "number"},
+        "retrograde": {"type": "boolean"}
+      }
+    },
+    "planetFacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["planetId", "position"],
+        "properties": {
+          "planetId": {"$ref": "#/$defs/planetId"},
+          "position": {"oneOf": [{"$ref": "#/$defs/unavailable"}, {"type": "object", "additionalProperties": false, "required": ["status", "value"], "properties": {"status": {"const": "available"}, "value": {"$ref": "#/$defs/planetPosition"}}}]}
+        }
+      }
+    },
+    "houses": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cusps", "ascendantDeg", "midheavenDeg", "effectiveSystem", "fallback"],
+      "properties": {
+        "cusps": {
+          "type": "array",
+          "items": {"type": "object", "additionalProperties": false, "required": ["houseId", "longitudeDeg"], "properties": {"houseId": {"type": "integer", "minimum": 1, "maximum": 12}, "longitudeDeg": {"type": "number"}}},
+          "minItems": 12,
+          "maxItems": 12
+        },
+        "ascendantDeg": {"type": "number"},
+        "midheavenDeg": {"type": "number"},
+        "effectiveSystem": {"type": "string"},
+        "fallback": {"type": "boolean"}
+      }
+    },
+    "chart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "kind", "timeStatus", "time", "settings", "planets", "houses", "warnings"],
+      "properties": {
+        "id": {"type": "string"},
+        "label": {"oneOf": [{"type": "string"}, {"type": "null"}]},
+        "kind": {"enum": ["natal", "transit"]},
+        "timeStatus": {"enum": ["resolved", "unknown-time"]},
+        "time": {"oneOf": [{"$ref": "#/$defs/resolvedTime"}, {"$ref": "#/$defs/unknownTime"}, {"type": "null"}]},
+        "settings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zodiac", "requestedHouseSystem", "observer"],
+          "properties": {"zodiac": {"const": "tropical"}, "requestedHouseSystem": {"oneOf": [{"type": "string"}, {"type": "null"}]}, "observer": {"oneOf": [{"type": "object", "additionalProperties": false, "required": ["latitudeDeg", "longitudeDeg"], "properties": {"latitudeDeg": {"type": "number"}, "longitudeDeg": {"type": "number"}}}, {"type": "null"}]}}
+        },
+        "planets": {
+          "oneOf": [{"$ref": "#/$defs/unavailable"}, {"type": "object", "additionalProperties": false, "required": ["status", "value"], "properties": {"status": {"const": "available"}, "value": {"$ref": "#/$defs/planetFacts"}}}]
+        },
+        "houses": {
+          "oneOf": [{"$ref": "#/$defs/unavailable"}, {"type": "object", "additionalProperties": false, "required": ["status", "value"], "properties": {"status": {"const": "available"}, "value": {"$ref": "#/$defs/houses"}}}]
+        },
+        "warnings": {
+          "type": "array",
+          "items": {"enum": ["historical-zone-offset-uncertain", "offset-override-differs-from-zone", "pre-utc-ut1-approximation", "modeled-delta-t", "future-utc-assumption", "near-coverage-edge", "polar-house-fallback"]}
+        }
+      },
+      "allOf": [{"if": {"properties": {"timeStatus": {"const": "unknown-time"}}}, "then": {"properties": {"kind": {"const": "natal"}, "planets": {"properties": {"status": {"const": "unavailable"}, "reason": {"const": "unknown-birth-time"}}}, "houses": {"properties": {"status": {"const": "unavailable"}, "reason": {"const": "unknown-birth-time"}}}, "time": {"oneOf": [{"$ref": "#/$defs/unknownTime"}, {"type": "null"}]}}}, "else": {"properties": {"time": {"oneOf": [{"$ref": "#/$defs/resolvedTime"}, {"type": "null"}]}}}}]
+    },
+    "aspectFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "from", "to", "aspect", "exactAngleDeg", "separationDeg", "orbDeg", "allowedOrbDeg", "ruleSetVersion"],
+      "properties": {
+        "id": {"type": "string"},
+        "from": {"$ref": "#/$defs/planetRef"},
+        "to": {"$ref": "#/$defs/planetRef"},
+        "aspect": {"enum": ["conjunction", "sextile", "square", "trine", "opposition"]},
+        "exactAngleDeg": {"type": "number"},
+        "separationDeg": {"type": "number"},
+        "orbDeg": {"type": "number"},
+        "allowedOrbDeg": {"type": "number"},
+        "ruleSetVersion": {"const": 0}
+      }
+    },
+    "eventMoment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["utc", "jdUt", "jdTt"],
+      "properties": {
+        "utc": {"oneOf": [{"type": "string"}, {"type": "null"}]},
+        "jdUt": {"oneOf": [{"type": "number"}, {"type": "null"}]},
+        "jdTt": {"oneOf": [{"type": "number"}, {"type": "null"}]}
+      }
+    },
+    "aspectPass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "state", "residualDeg", "toleranceDeg"],
+      "properties": {
+        "at": {"$ref": "#/$defs/eventMoment"},
+        "state": {"enum": ["exact", "refined", "near-miss"]},
+        "residualDeg": {"oneOf": [{"type": "number"}, {"type": "null"}]},
+        "toleranceDeg": {"oneOf": [{"type": "number"}, {"type": "null"}]}
+      }
+    },
+    "aspectWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "timing", "kind", "transit", "target", "aspect", "startsAt", "endsAt", "clippedStart", "clippedEnd", "passes", "allowedOrbDeg"],
+      "properties": {
+        "id": {"type": "string"},
+        "timing": {"enum": ["past", "present", "future", "unknown"]},
+        "kind": {"const": "aspect-window"},
+        "transit": {"$ref": "#/$defs/planetRef"},
+        "target": {"$ref": "#/$defs/planetRef"},
+        "aspect": {"enum": ["conjunction", "sextile", "square", "trine", "opposition"]},
+        "startsAt": {"oneOf": [{"$ref": "#/$defs/eventMoment"}, {"type": "null"}]},
+        "endsAt": {"oneOf": [{"$ref": "#/$defs/eventMoment"}, {"type": "null"}]},
+        "clippedStart": {"type": "boolean"},
+        "clippedEnd": {"type": "boolean"},
+        "passes": {"type": "array", "items": {"$ref": "#/$defs/aspectPass"}},
+        "allowedOrbDeg": {"type": "number"}
+      }
+    },
+    "station": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "timing", "kind", "planet", "at", "turns"],
+      "properties": {
+        "id": {"type": "string"},
+        "timing": {"enum": ["past", "present", "future", "unknown"]},
+        "kind": {"const": "station"},
+        "planet": {"$ref": "#/$defs/planetRef"},
+        "at": {"$ref": "#/$defs/eventMoment"},
+        "turns": {"enum": ["direct", "retrograde"]}
+      }
+    },
+    "eventSearch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end", "events"],
+      "properties": {
+        "start": {"$ref": "#/$defs/eventMoment"},
+        "end": {"$ref": "#/$defs/eventMoment"},
+        "events": {
+          "type": "array",
+          "items": {"oneOf": [{"$ref": "#/$defs/aspectWindow"}, {"$ref": "#/$defs/station"}]}
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selectedAt", "referenceAt", "eventSearch"],
+      "properties": {
+        "selectedAt": {"oneOf": [{"$ref": "#/$defs/eventMoment"}, {"type": "null"}]},
+        "referenceAt": {"oneOf": [{"$ref": "#/$defs/eventMoment"}, {"type": "null"}]},
+        "eventSearch": {"oneOf": [{"$ref": "#/$defs/eventSearch"}, {"type": "null"}]},
+        "eventSummary": {
+          "type": "object", "additionalProperties": false,
+          "required": ["status", "daysBefore", "daysAfter", "timing", "filter", "limit", "totalEvents", "includedEvents", "warnings", "unavailableReasons", "contactToleranceDeg", "refinementSeconds", "stationToleranceDegPerDay", "stationResidualsDegPerDay"],
+          "properties": {
+            "status": {"enum": ["complete", "partial", "unavailable"]},
+            "daysBefore": {"type": "integer", "minimum": 0, "maximum": 90},
+            "daysAfter": {"type": "integer", "minimum": 0, "maximum": 90},
+            "timing": {"enum": ["all", "past", "present", "future"]},
+            "filter": {"enum": ["all", "focused", "station"]},
+            "limit": {"type": "integer", "minimum": 1},
+            "totalEvents": {"type": "integer", "minimum": 0},
+            "includedEvents": {"type": "integer", "minimum": 0},
+            "warnings": {"type": "array", "items": {"type": "string"}},
+            "unavailableReasons": {"type": "array", "items": {"type": "string"}},
+            "contactToleranceDeg": {"type": "number"},
+            "refinementSeconds": {"type": "number"},
+            "stationToleranceDegPerDay": {"type": "number"},
+            "stationResidualsDegPerDay": {"type": "array", "items": {"type": ["number", "null"]}}
+          }
+        }
+      }
+    },
+    "symbolicMeaning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["factId", "tradition", "ruleSetVersion", "description", "sources"],
+      "properties": {
+        "factId": {"type": "string"},
+        "tradition": {"type": "string"},
+        "ruleSetVersion": {"type": "string"},
+        "description": {"type": "string"},
+        "sources": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

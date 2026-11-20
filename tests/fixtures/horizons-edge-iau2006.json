@@ -1,0 +1,63 @@
+{
+  "source": "NASA/JPL Horizons quantity 45 apparent geocentric ICRF RA/DEC, rotated with ERFA eqec06 then nut00b longitude. Rows: [JD TT, RA degrees, declination degrees, ecliptic longitude degrees, ecliptic latitude degrees].",
+  "erfaVersion": "2.0.1.5",
+  "bodies": {
+    "Sun": {
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%2710%27&OBJ_DATA=%27NO%27&CENTER=%27500%40399%27&TIME_TYPE=%27TT%27&TLIST_TYPE=%27JD%27&TLIST=%272287186.5%27+%272688950.5%27&CAL_FORMAT=%27JD%27&CSV_FORMAT=%27YES%27&QUANTITIES=%2745%27&ANG_FORMAT=%27DEG%27&EXTRA_PREC=%27YES%27&REF_SYSTEM=%27ICRF%27",
+      "rows": [
+        [
+          2287186.5,
+          288.890445388,
+          -22.35859832,
+          281.14402995823906,
+          0.00021291087481143672
+        ],
+        [
+          2688950.5,
+          268.876978307,
+          -23.351283875,
+          278.0594109650594,
+          -6.407118406292323e-05
+        ]
+      ]
+    },
+    "Moon": {
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27301%27&OBJ_DATA=%27NO%27&CENTER=%27500%40399%27&TIME_TYPE=%27TT%27&TLIST_TYPE=%27JD%27&TLIST=%272287186.5%27+%272688950.5%27&CAL_FORMAT=%27JD%27&CSV_FORMAT=%27YES%27&QUANTITIES=%2745%27&ANG_FORMAT=%27DEG%27&EXTRA_PREC=%27YES%27&REF_SYSTEM=%27ICRF%27",
+      "rows": [
+        [
+          2287186.5,
+          330.853386497,
+          -8.2167984,
+          323.72196480234163,
+          3.501261411484196
+        ],
+        [
+          2688950.5,
+          327.894089567,
+          -13.171856103,
+          334.65749618422393,
+          -0.2237089271516437
+        ]
+      ]
+    },
+    "Mercury": {
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27199%27&OBJ_DATA=%27NO%27&CENTER=%27500%40399%27&TIME_TYPE=%27TT%27&TLIST_TYPE=%27JD%27&TLIST=%272287186.5%27+%272688950.5%27&CAL_FORMAT=%27JD%27&CSV_FORMAT=%27YES%27&QUANTITIES=%2745%27&ANG_FORMAT=%27DEG%27&EXTRA_PREC=%27YES%27&REF_SYSTEM=%27ICRF%27",
+      "rows": [
+        [
+          2287186.5,
+          272.509196641,
+          -20.215087838,
+          266.0798798462074,
+          3.262220583236012
+        ],
+        [
+          2688950.5,
+          246.300242865,
+          -19.676780995,
+          256.83847857058424,
+          1.8689632961096583
+        ]
+      ]
+    }
+  }
+}

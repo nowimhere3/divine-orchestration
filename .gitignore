@@ -1,0 +1,10 @@
+/node_modules/
+/dist/
+/playwright-report/
+/test-results/
+/.sideline/
+/Plumbing SLC/
+/Third-Party References/
+/.env
+/.env.*
+/.playwright-browsers/

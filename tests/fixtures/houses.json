@@ -1,0 +1,129 @@
+{
+  "source": "Swiss Ephemeris houses_ex, tropical, explicit UT. Polar rows verify the requested Swiss method errors and compare the explicit Porphyry result.",
+  "wrapper": "pysweph 2.10.3.6",
+  "library": "2.10.03",
+  "wheelSha256": "404c3eb9eec86df06bcc42210d31ba356dd4df8202eb70fc6fa9e0b5bb488b8f",
+  "wheelUrl": "https://files.pythonhosted.org/packages/57/05/3eba4dc9364768b8453b1cdb54884d10f90d9a514c3be6eb40acb3c87063/pysweph-2.10.3.6-cp313-cp313-win_amd64.whl",
+  "cases": [
+    {
+      "label": "London / Placidus",
+      "jdUt": 2451545,
+      "longitudeDeg": -0.1278,
+      "latitudeDeg": 51.5074,
+      "requested": "Placidus",
+      "effective": "Placidus",
+      "cuspsDeg": [
+        24.014590440762543,
+        61.012971529987446,
+        81.91142157309109,
+        99.49322530316971,
+        118.91353522347714,
+        147.4854873149739,
+        204.01459044076253,
+        241.01297152998745,
+        261.9114215730911,
+        279.4932253031697,
+        298.91353522347714,
+        327.4854873149739
+      ],
+      "ascendantDeg": 24.014590440762543,
+      "midheavenDeg": 279.4932253031697
+    },
+    {
+      "label": "New York / Whole Sign",
+      "jdUt": 2460409.25,
+      "longitudeDeg": -74.006,
+      "latitudeDeg": 40.7128,
+      "requested": "WholeSign",
+      "effective": "WholeSign",
+      "cuspsDeg": [
+        120.0,
+        150.0,
+        180.0,
+        210.0,
+        240.0,
+        270.0,
+        300.0,
+        330.0,
+        0.0,
+        30.0,
+        60.0,
+        90.0
+      ],
+      "ascendantDeg": 135.486640581919,
+      "midheavenDeg": 35.784388299031924
+    },
+    {
+      "label": "Tromso / polar Placidus",
+      "jdUt": 2460409.25,
+      "longitudeDeg": 18.9553,
+      "latitudeDeg": 69.6492,
+      "requested": "Placidus",
+      "effective": "Porphyry",
+      "cuspsDeg": [
+        198.163188515689,
+        233.48002089872142,
+        268.79685328175384,
+        304.11368566478626,
+        328.79685328175384,
+        353.4800208987214,
+        18.163188515689,
+        53.48002089872142,
+        88.79685328175384,
+        124.11368566478625,
+        148.79685328175384,
+        173.48002089872142
+      ],
+      "ascendantDeg": 198.163188515689,
+      "midheavenDeg": 124.11368566478625
+    },
+    {
+      "label": "Tromso / explicit Porphyry",
+      "jdUt": 2460409.25,
+      "longitudeDeg": 18.9553,
+      "latitudeDeg": 69.6492,
+      "requested": "Porphyry",
+      "effective": "Porphyry",
+      "cuspsDeg": [
+        198.163188515689,
+        233.48002089872142,
+        268.79685328175384,
+        304.11368566478626,
+        328.79685328175384,
+        353.4800208987214,
+        18.163188515689,
+        53.48002089872142,
+        88.79685328175384,
+        124.11368566478625,
+        148.79685328175384,
+        173.48002089872142
+      ],
+      "ascendantDeg": 198.163188515689,
+      "midheavenDeg": 124.11368566478625
+    },
+    {
+      "label": "Southern polar / Koch",
+      "jdUt": 2451545,
+      "longitudeDeg": 120,
+      "latitudeDeg": -72,
+      "requested": "Koch",
+      "effective": "Porphyry",
+      "cuspsDeg": [
+        50.429230738169224,
+        107.92170310997071,
+        165.4141754817722,
+        222.90664785357365,
+        225.41417548177216,
+        227.9217031099707,
+        230.42923073816922,
+        287.92170310997074,
+        345.4141754817722,
+        42.906647853573645,
+        45.41417548177217,
+        47.9217031099707
+      ],
+      "ascendantDeg": 50.429230738169224,
+      "midheavenDeg": 42.906647853573645
+    }
+  ]
+}

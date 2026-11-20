@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0a14" />
+    <meta name="description" content="A personal celestial observatory: natal chart, Time Machine, planetary events and AI-ready exports, all calculated in your browser." />
+    <link rel="icon" type="image/svg+xml" href="/src/assets/favicon.svg" />
+    <title>Divine Orchestration</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <header class="app-bar">
+      <a class="brand" href="#chart" aria-label="Divine Orchestration Personal celestial observatory, chart">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <ellipse cx="16" cy="16" rx="13" ry="5.5" transform="rotate(-24 16 16)" fill="none" stroke="currentColor" stroke-width="1" opacity=".55"/>
+          <circle cx="16" cy="16" r="9.5" fill="none" stroke="currentColor" stroke-width="1" opacity=".35"/>
+          <path d="M16 6.5l1.9 7.6 7.6 1.9-7.6 1.9L16 25.5l-1.9-7.6L6.5 16l7.6-1.9z" fill="currentColor"/>
+        </svg>
+        <span class="brand-text"><h1 id="app-title">Divine Orchestration</h1>
+          <small>Personal celestial observatory</small></span>
+      </a>
+      <nav class="app-nav" aria-label="Primary">
+        <a href="#chart" data-nav="chart"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/><path d="M12 3.5v5M12 15.5v5M3.5 12h5M15.5 12h5"/></svg><span>Chart</span></a>
+        <a href="#events" data-nav="events"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 18h16M7 18V9M12 18V5M17 18v-6"/><circle cx="7" cy="7" r="1.3"/><circle cx="12" cy="3.2" r="1.3"/><circle cx="17" cy="10" r="1.3"/></svg><span>Events</span></a>
+        <a href="#library" data-nav="library"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4.5h10a2 2 0 0 1 2 2V20H7a2 2 0 0 1-2-2zM17 8h2v12h-2"/><path d="M8.5 9h5M8.5 12.5h5"/></svg><span>Library</span></a>
+        <a href="#export" data-nav="export"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V4M8 8l4-4 4 4M5 14v5h14v-5"/></svg><span>Export</span></a>
+      </nav>
+      <span class="app-meta">Tropical zodiac</span>
+    </header>
+    <main id="main-content" tabindex="-1">
+      <section id="view-chart" class="view" data-page="chart">
+        <div class="chart-layout">
+          <section class="stage" aria-label="Chart stage">
+            <div class="stage-bar">
+              <div class="stage-title">
+                <p class="eyebrow">Natal · Transit</p>
+                <h2 id="wheel-heading" tabindex="-1">Chart wheel</h2>
+                <p id="wheel-caption">Loading chart…</p>
+                <p id="chart-notice" class="form-note" role="status"></p>
+              </div>
+              <button id="edit-birth" type="button" class="secondary">Edit birth details</button>
+            </div>
+            <div class="stage-sky">
+              <div class="wheel-frame">
+              <div id="wheel" class="wheel"></div>
+              <div class="wheel-tools" role="group" aria-label="Wheel zoom" aria-describedby="wheel-help">
+                <button id="wheel-zoom-out" type="button" aria-label="Zoom out" title="Zoom out">−</button>
+                <output id="wheel-zoom-level" aria-live="polite">100%</output>
+                <button id="wheel-zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+                <button id="wheel-zoom-reset" type="button" class="wheel-reset" aria-label="Reset wheel view" title="Reset wheel view">Reset</button>
+              </div>
+              </div>
+              <p id="wheel-help" class="sr-only">With a planet focused, press plus or minus to zoom, the arrow keys to pan a zoomed wheel, and zero to reset. On a touch screen, pinch to zoom and drag to pan.</p>
+              <div id="planet-strip" class="planet-strip" role="group" aria-label="Choose a planet"></div>
+              <div id="selection-bar" class="selection-bar" hidden>
+                <p id="selection-summary" role="status"></p>
+                <button id="selection-toggle" type="button" class="primary">View details</button>
+                <button id="selection-clear" type="button" class="quiet" aria-label="Clear selection">×</button>
+              </div>
+              <div class="legend" role="group" aria-label="Wheel key">
+                <span><i class="dot-natal"></i>Natal</span>
+                <span><i class="dot-transit"></i>Transit</span>
+                <span class="legend-aspect"><i class="line-support"></i>Trine, sextile</span>
+                <span class="legend-aspect"><i class="line-tense"></i>Square, opposition</span>
+              </div>
+            </div>
+            <section class="time-machine" aria-labelledby="time-heading">
+              <div class="time-header">
+                <div class="time-readout">
+                  <h2 id="time-heading">Time Machine</h2>
+                  <p><span id="selected-epoch"></span> <span id="time-relative" class="time-relative"></span></p>
+                </div>
+                <div class="time-actions">
+                  <div class="step-group" role="group" aria-label="Step size">
+                    <button type="button" data-step="hour" aria-pressed="false">Hour</button>
+                    <button type="button" data-step="day" aria-pressed="true">Day</button>
+                    <button type="button" data-step="week" aria-pressed="false">Week</button>
+                  </div>
+                  <button id="time-now" type="button">Now</button>
+                </div>
+              </div>
+              <div class="time-body">
+                <div class="time-controls">
+                  <button id="previous-day" type="button" aria-label="Previous day">←</button>
+                  <label class="time-date"><span class="sr-only">Transit date</span><input id="transit-date" type="date" min="1550-01-01" max="2650-01-03"></label>
+                  <label class="time-clock"><span class="sr-only">Transit time (UTC)</span><input id="transit-time" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" autocomplete="off"><abbr title="Coordinated Universal Time">UTC</abbr></label>
+                  <button id="next-day" type="button" aria-label="Next day">→</button>
+                </div>
+                <div class="time-scrub">
+                  <label class="slider-label" for="timeline">Scrub by day <span>±90 days</span></label>
+                  <div class="timeline-track">
+                    <input id="timeline" type="range" min="-90" max="90" value="0" step="1">
+                    <span id="now-marker" class="now-marker" aria-hidden="true" hidden><span>Today</span></span>
+                  </div>
+                  <div class="slider-endpoints"><span id="earliest-day"></span><span id="latest-day"></span></div>
+                </div>
+              </div>
+              <p id="transit-status" class="form-note" role="status" hidden></p>
+            </section>
+          </section>
+          <aside class="panel inspector" aria-labelledby="inspect-heading">
+            <h2 id="inspect-heading">Inspector</h2>
+            <div id="inspection" aria-live="polite"><p>Select a planet or aspect to see its geometry.</p></div>
+            <section class="calculation">
+              <h3>Calculation notes</h3>
+              <ul id="calculation-notes"></ul>
+            </section>
+          </aside>
+        </div>
+        <section class="panel readings" aria-labelledby="data-heading">
+          <div class="reading-header">
+            <h2 id="data-heading">Chart data</h2>
+            <div class="data-switch" role="group" aria-label="Chart data view">
+              <button type="button" data-view="natal" aria-pressed="true">Natal</button>
+              <button type="button" data-view="transit" aria-pressed="false">Transit</button>
+              <button type="button" data-view="aspects" aria-pressed="false">Aspects</button>
+              <button type="button" data-view="houses" aria-pressed="false">Houses &amp; angles</button>
+            </div>
+          </div>
+          <div id="data-view" class="data-view" role="region" aria-label="Calculated chart tables" tabindex="0"></div>
+        </section>
+      </section>
+
+      <section id="view-events" class="view" data-page="events" hidden>
+        <div class="view-intro"><p class="eyebrow">Sky events</p></div>
+        <section class="panel event-search" aria-labelledby="event-heading">
+          <div class="section-head">
+            <div>
+              <h2 id="event-heading" tabindex="-1">Planetary events</h2>
+              <p class="lede">Exact contacts between the transiting sky and your natal planets, plus planetary stations, grouped by month.</p>
+            </div>
+          </div>
+          <form id="event-form">
+            <fieldset id="event-inputs" disabled>
+              <legend class="sr-only">Event search interval</legend>
+              <label>From (UTC midnight)<input id="event-from" type="date" required></label>
+              <label>To (UTC midnight)<input id="event-to" type="date" required></label>
+              <label>Transiting planet<select id="event-body"><option value="all">All planets</option></select></label>
+              <button class="primary" type="submit">Search events</button>
+            </fieldset>
+            <button id="event-cancel" type="button" hidden>Cancel search</button>
+          </form>
+          <progress id="event-progress" aria-label="Event search progress" hidden></progress>
+          <p class="form-note" id="event-status" role="status">Search up to 366 days for transits to your natal planets and planetary stations.</p>
+          <div id="event-toolbar" class="event-toolbar" hidden>
+            <fieldset class="segmented">
+              <legend>Show</legend>
+              <label class="seg"><input type="radio" name="event-filter" value="exact" checked><span>Exact contacts &amp; stations</span></label>
+              <label class="seg"><input type="radio" name="event-filter" value="station"><span>Stations only</span></label>
+              <label class="seg"><input type="radio" name="event-filter" value="all"><span>All windows</span></label>
+            </fieldset>
+            <label class="check"><input id="event-details" type="checkbox"> Show details</label>
+            <p id="event-summary" class="form-note" role="status"></p>
+          </div>
+          <div id="event-results"></div>
+        </section>
+      </section>
+
+      <section id="view-library" class="view" data-page="library" hidden>
+        <div class="view-intro"><p class="eyebrow">Your charts</p></div>
+        <section class="panel library" aria-labelledby="library-heading">
+          <div class="section-head">
+            <div>
+              <h2 id="library-heading" tabindex="-1">Personal library</h2>
+              <p class="lede">Natal profiles stay in this browser. Nothing is uploaded.</p>
+            </div>
+            <button id="backup-open" type="button" class="secondary">Backup &amp; restore</button>
+          </div>
+          <fieldset id="profile-controls" class="save-bar" disabled>
+            <legend class="sr-only">Save the current chart</legend>
+            <label>Profile name<input id="profile-name" maxlength="80" autocomplete="off" placeholder="For example: Me, born in London"></label>
+            <button id="profile-save" type="button" class="primary">Save current chart</button>
+          </fieldset>
+          <p id="profile-status" class="form-note" role="status"></p>
+          <p id="profile-empty" class="empty-state" hidden>No saved profiles yet. Calculate a natal chart, give it a name and choose Save current chart.</p>
+          <ul id="profile-cards" class="profile-cards" aria-label="Saved profiles"></ul>
+        </section>
+      </section>
+
+      <section id="view-export" class="view" data-page="export" hidden>
+        <div class="view-intro"><p class="eyebrow">For your own AI conversations</p></div>
+        <section class="panel studio" aria-labelledby="export-heading">
+          <div class="section-head">
+            <div>
+              <h2 id="export-heading" tabindex="-1">AI Export Studio</h2>
+              <p class="lede">Prepare a snapshot of the calculated chart to paste into an AI conversation you control. Nothing is uploaded from here.</p>
+            </div>
+          </div>
+          <ol class="stepper" aria-label="Export steps">
+            <li id="step-configure" aria-current="step"><span class="step-number">1</span> Configure</li>
+            <li id="step-preview"><span class="step-number">2</span> Preview &amp; export</li>
+          </ol>
+          <p id="export-status" class="form-note" role="status"></p>
+          <form id="export-form" class="step-panel">
+            <fieldset id="export-controls" disabled>
+              <legend class="sr-only">Snapshot options</legend>
+              <div class="moment-card">
+                <div>
+                  <p class="eyebrow">Selected moment</p>
+                  <p id="export-moment" class="moment"></p>
+                  <p class="hint">The snapshot describes the sky at the Time Machine moment.</p>
+                </div>
+                <a class="button-link" href="#chart">Change moment</a>
+              </div>
+              <fieldset class="choice-group">
+                <legend>Privacy</legend>
+                <div class="choice">
+                  <input type="radio" id="export-privacy-redacted" name="export-privacy" value="redacted" aria-describedby="privacy-redacted-hint" checked>
+                  <label for="export-privacy-redacted">Redacted</label>
+                  <p id="privacy-redacted-hint" class="hint">Removes names, birth inputs, coordinates, exact timestamps and original IDs. Calculated chart geometry remains.</p>
+                </div>
+                <div class="choice">
+                  <input type="radio" id="export-privacy-full" name="export-privacy" value="full" aria-describedby="privacy-full-hint">
+                  <label for="export-privacy-full">Full</label>
+                  <p id="privacy-full-hint" class="hint">Includes birth details, names, coordinates, and exact selected and event timestamps.</p>
+                </div>
+              </fieldset>
+              <fieldset class="choice-group">
+                <legend>Context</legend>
+                <div class="choice">
+                  <input type="radio" id="export-context-moment" name="export-context" value="moment" aria-describedby="context-moment-hint" checked>
+                  <label for="export-context-moment">Selected moment</label>
+                  <p id="context-moment-hint" class="hint">The chart and the sky at one instant.</p>
+                </div>
+                <div class="choice">
+                  <input type="radio" id="export-context-events" name="export-context" value="events" aria-describedby="context-events-hint">
+                  <label for="export-context-events">Include planetary events</label>
+                  <p id="context-events-hint" class="hint">Adds contacts and stations from a window around the moment, so an AI can discuss what came before and what follows.</p>
+                </div>
+              </fieldset>
+              <div id="export-event-options" class="event-options" hidden>
+                <p class="hint">Past and future are measured from the selected moment.</p>
+                <div class="option-grid">
+                  <label>Days before the moment<input id="export-before" type="number" min="0" max="90" value="7" required></label>
+                  <label>Days after the moment<input id="export-after" type="number" min="0" max="90" value="7" required></label>
+                  <label>Event timing<select id="export-timing"><option value="all">All timing</option><option value="past">Past</option><option value="present">Present</option><option value="future">Future</option></select></label>
+                  <label>Event type<select id="export-kind"><option value="focused">Exact contacts and stations</option><option value="station">Stations only</option><option value="all">All windows and stations</option></select></label>
+                  <label>Maximum events<select id="export-limit"><option value="12">12</option><option value="24">24</option><option value="48">48</option></select></label>
+                </div>
+              </div>
+              <button type="submit" class="primary">Prepare export</button>
+            </fieldset>
+            <button id="export-cancel" type="button" hidden>Cancel export search</button>
+            <progress id="export-progress" aria-label="Export search progress" hidden></progress>
+          </form>
+          <div id="export-step-two" class="step-panel" hidden>
+            <div class="step-head">
+              <h3 id="export-preview-heading" tabindex="-1">Preview and export</h3>
+              <button id="export-back" type="button" class="secondary">Back to settings</button>
+            </div>
+            <ul id="export-summary" class="chips" aria-label="Export summary"></ul>
+            <fieldset class="segmented format-row">
+              <legend>Preview format</legend>
+              <label class="seg"><input type="radio" name="export-format" value="markdown" checked><span>Markdown</span></label>
+              <label class="seg"><input type="radio" name="export-format" value="json"><span>JSON</span></label>
+            </fieldset>
+            <label class="studio-preview">Export preview<textarea id="export-preview" readonly rows="12"></textarea></label>
+            <div class="export-actions">
+              <button id="export-copy" type="button" class="primary" disabled>Copy preview</button>
+              <button id="export-md" type="button" disabled>Download Markdown</button>
+              <button id="export-json" type="button" disabled>Download JSON</button>
+            </div>
+            <section class="prompt-card" aria-labelledby="prompt-heading">
+              <h3 id="prompt-heading">Reusable interpretation prompt</h3>
+              <p class="hint">Paste this first in your AI conversation, then paste the snapshot. It asks the assistant to stay with the calculated facts.</p>
+              <blockquote id="interpretation-prompt"></blockquote>
+              <button id="export-copy-prompt" type="button">Copy interpretation prompt</button>
+            </section>
+          </div>
+        </section>
+      </section>
+      <p class="app-footer">Calculated in your browser. Nothing is uploaded, and no AI service is contacted.</p>
+    </main>
+
+    <dialog id="backup-dialog" aria-labelledby="backup-heading">
+      <div class="dialog-heading">
+        <div><p class="eyebrow">Personal library</p><h2 id="backup-heading" tabindex="-1">Backup and restore</h2></div>
+        <button id="backup-close" type="button" class="quiet" aria-label="Close backup and restore">×</button>
+      </div>
+      <div class="backup-body">
+        <p>A backup is a JSON file with every saved profile. It includes birth details and coordinates, so keep it private.</p>
+        <button id="profile-backup" type="button" class="primary" disabled>Download profile backup</button>
+        <hr>
+        <p>Restoring adds profiles from a backup file. It never overwrites a profile that already exists, and every record is checked before any is added.</p>
+        <label>Restore profile backup<input id="profile-restore" type="file" accept=".json,application/json" disabled></label>
+        <p id="backup-status" class="form-note" role="status"></p>
+      </div>
+    </dialog>
+    <dialog id="birth-dialog" aria-labelledby="birth-heading">
+      <div class="dialog-heading">
+        <div><p class="eyebrow">Natal chart</p><h2 id="birth-heading">Birth details</h2></div>
+        <button id="birth-close" type="button" class="quiet" aria-label="Close birth details">×</button>
+      </div>
+      <form id="birth-form" novalidate>
+        <label>Birth date <input id="birth-date" type="date" value="2000-01-01" required></label>
+        <label>Local birth time <input id="birth-time" type="text" value="12:00" placeholder="HH:MM" autocomplete="off"></label>
+        <label class="check"><input id="unknown-time" type="checkbox"> Birth time unknown</label>
+        <label>Time zone <input id="birth-zone" type="text" value="Europe/London" placeholder="America/New_York" autocomplete="off"></label>
+        <div class="paired-fields">
+          <label>Latitude <input id="birth-lat" type="number" step="any" min="-90" max="90" value="51.4779"></label>
+          <label>Longitude <input id="birth-lon" type="number" step="any" min="-180" max="180" value="0"></label>
+        </div>
+        <label>House system
+          <select id="house-system"><option value="WholeSign">Whole Sign</option><option value="Placidus">Placidus</option></select>
+        </label>
+        <details class="offset">
+          <summary>UTC offset override</summary>
+          <label>Recorded offset <input id="birth-offset" type="text" placeholder="+00:00" autocomplete="off"></label>
+        </details>
+        <div id="fold-choices" hidden>
+          <label>Choose birth offset <select id="fold-choice"></select></label>
+        </div>
+        <button type="submit" class="primary" id="calculate" disabled>Calculate natal chart</button>
+        <p class="form-note" id="birth-status" role="status">Loading the calculation engine…</p>
+      </form>
+    </dialog>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

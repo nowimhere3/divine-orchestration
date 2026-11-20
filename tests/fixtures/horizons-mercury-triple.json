@@ -1,0 +1,67 @@
+{
+  "source": "NASA/JPL Horizons, Mercury (199), geocentric apparent ecliptic of date, quantity 31, TT. Rows are [JD TT, longitude degrees].",
+  "query": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27199%27&OBJ_DATA=%27NO%27&CENTER=%27500%40399%27&TIME_TYPE=%27TT%27&START_TIME=%272024-03-20%27&STOP_TIME=%272024-05-15%27&STEP_SIZE=%273+h%27&CAL_FORMAT=%27JD%27&CSV_FORMAT=%27YES%27&QUANTITIES=%2731%27",
+  "targetLongitudeDeg": 20,
+  "contacts": [
+    [
+      [
+        2460391.375,
+        19.8411355
+      ],
+      [
+        2460391.5,
+        20.0021093
+      ]
+    ],
+    [
+      [
+        2460415.75,
+        20.0889412
+      ],
+      [
+        2460415.875,
+        19.9998683
+      ]
+    ],
+    [
+      [
+        2460436.25,
+        19.979582
+      ],
+      [
+        2460436.375,
+        20.0727419
+      ]
+    ]
+  ],
+  "stations": [
+    [
+      [
+        2460402.25,
+        27.2167403
+      ],
+      [
+        2460402.375,
+        27.2184433
+      ],
+      [
+        2460402.5,
+        27.2182964
+      ]
+    ],
+    [
+      [
+        2460425.875,
+        15.9823037
+      ],
+      [
+        2460426.0,
+        15.9812554
+      ],
+      [
+        2460426.125,
+        15.9815057
+      ]
+    ]
+  ]
+}
