@@ -180,6 +180,35 @@ dialog::backdrop { background: #07060ccc; backdrop-filter: blur(3px); }
 #birth-form { display: grid; gap: .8rem; }
 .paired-fields { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
 .offset label { margin-top: .6rem; }
+.zone-picker { position: relative; display: grid; gap: .35rem; }
+.zone-combo { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .35rem; align-items: stretch; }
+.zone-toggle { min-width: 2.75rem; padding-inline: .6rem; }
+.zone-listbox {
+  position: absolute; top: calc(100% + .25rem); left: 0; right: 0; z-index: 30;
+  max-height: 15.5rem; overflow-y: auto; margin: 0; padding: .3rem; list-style: none;
+  background: #171329; border: 1px solid var(--line-strong); border-radius: var(--radius);
+  box-shadow: 0 18px 42px -12px #000;
+}
+.zone-option {
+  display: grid; gap: .1rem; padding: .5rem .7rem; border-radius: var(--radius-sm);
+  border-left: 3px solid transparent; cursor: pointer; min-height: 2.75rem;
+}
+.zone-option:hover, .zone-option[aria-selected='true'] { background: #c9b4ff20; border-left-color: var(--gold); }
+.zone-option-label { font-size: .9rem; font-weight: 600; color: var(--text); }
+.zone-option-meta { font-size: .76rem; color: var(--muted); }
+.zone-empty { padding: .6rem .75rem; font-size: .84rem; color: var(--muted); }
+.zone-summary {
+  margin: 0; padding: .5rem .7rem; border-radius: var(--radius-sm);
+  background: #0f0c1b80; border: 1px solid var(--line); font-size: .82rem; line-height: 1.45; color: var(--muted);
+}
+.zone-summary strong { color: var(--text); font-weight: 600; }
+.zone-summary[data-valid='false'] { border-color: #f08ba099; background: #f08ba014; color: #ffd3dc; }
+.birth-save { margin-top: 1.1rem; padding-top: 1rem; border-top: 1px solid var(--line); display: grid; gap: .65rem; }
+.birth-save-head { display: grid; gap: .2rem; }
+.birth-save-head h3 { font-family: var(--font-display); font-size: 1.15rem; font-weight: 600; }
+.birth-save-row { display: flex; flex-wrap: wrap; align-items: end; gap: .6rem; }
+.birth-save-row label { flex: 1 1 12rem; }
+.birth-save-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
 
 /* Chart view */
 .chart-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem); gap: var(--space-3); align-items: start; }
@@ -194,15 +223,27 @@ dialog::backdrop { background: #07060ccc; backdrop-filter: blur(3px); }
     radial-gradient(ellipse at 50% 42%, #2a1f45 0, #171329 46%, var(--stage) 80%);
   box-shadow: 0 24px 60px -30px #000, inset 0 1px 0 #ffffff0d;
 }
-.stage-bar { display: flex; justify-content: space-between; align-items: start; gap: var(--space-3); position: relative; z-index: 1; }
-.stage-title { min-width: 0; }
+.stage-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: start; gap: var(--space-2) var(--space-3); position: relative; z-index: 1; }
+.stage-title { min-width: 0; flex: 1 1 18rem; }
 .stage-title h2 { font-size: 1.6rem; line-height: 1.1; }
 .stage-title { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: .8rem; }
 .stage-title .eyebrow { display: none; }
-.stage-title #chart-notice { flex-basis: 100%; }
+.stage-title #chart-notice, .stage-title #chart-profile-status { flex-basis: 100%; }
 .stage-title p:not(.eyebrow) { color: var(--muted); font-size: .86rem; margin-top: .15rem; }
 #chart-notice { color: var(--muted); font-size: .8rem; }
-#edit-birth { flex: none; white-space: nowrap; }
+.profile-badge {
+  display: inline-flex; align-items: center; padding: .15rem .55rem; border-radius: 999px;
+  border: 1px solid var(--line-strong); font-size: .76rem; font-weight: 600; color: var(--text); background: #ffffff0a;
+}
+.profile-badge[data-state='profile'] { border-color: #7fd6c299; background: #7fd6c218; color: var(--teal); }
+.profile-badge[data-state='demo'] { border-color: #f2c47e66; background: #f2c47e14; color: var(--gold); }
+.profile-badge[data-state='unsaved'] { border-color: #c9b4ff66; background: #c9b4ff14; color: var(--lilac-strong); }
+.profile-badge[data-state='pending'] { border-color: #f08ba099; background: #f08ba01a; color: #ffd3dc; }
+.stage-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem; }
+.chart-profile-bar { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.chart-profile-bar[hidden] { display: none; }
+.chart-profile-field select { min-width: 10rem; max-width: 15rem; }
+#edit-birth, #chart-profile-load, #chart-save-profile { flex: none; white-space: nowrap; }
 .stage-sky { position: relative; display: grid; justify-items: center; margin-block: var(--space-1) var(--space-2); }
 .stage-sky::before, .stage-sky::after {
   content: '';
@@ -217,7 +258,7 @@ dialog::backdrop { background: #07060ccc; backdrop-filter: blur(3px); }
   pointer-events: none;
 }
 .stage-sky::after { inset: 14% 0 24%; width: min(88%, 44rem); border-color: #f2c47e14; transform: rotate(14deg) scaleX(1.12) translateZ(0); }
-.wheel { position: relative; z-index: 1; width: min(100%, 44rem, max(20rem, calc(100dvh - 26rem))); min-width: min(100%, 20rem); aspect-ratio: 1; }
+.wheel { position: relative; z-index: 1; width: min(100%, 44rem, max(18.5rem, calc(100dvh - 27.5rem))); min-width: min(100%, 18.5rem); aspect-ratio: 1; }
 .wheel > div { height: 100%; }
 .wheel svg { width: 100%; height: 100%; display: block; overflow: visible !important; }
 .legend { position: relative; z-index: 1; display: flex; flex-wrap: wrap; justify-content: center; gap: .35rem 1.1rem; margin-top: .45rem; color: var(--muted); font-size: .76rem; }
@@ -269,8 +310,8 @@ dialog::backdrop { background: #07060ccc; backdrop-filter: blur(3px); }
   position: relative;
   z-index: 1;
   display: grid;
-  gap: .7rem;
-  padding: .85rem 1rem 1rem;
+  gap: .5rem;
+  padding: .7rem .95rem .8rem;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   background: linear-gradient(180deg, #17132a, #110e20);
@@ -282,13 +323,22 @@ dialog::backdrop { background: #07060ccc; backdrop-filter: blur(3px); }
 #selected-epoch { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 550; }
 .time-relative { color: var(--gold); margin-left: .35rem; }
 .time-relative::before { content: '· '; color: var(--muted); }
-.time-actions { display: flex; align-items: center; gap: var(--space-2); }
+.time-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.time-range {
+  display: inline-flex; align-items: center; gap: .4rem;
+  color: var(--muted); font-size: .8rem; font-weight: 600; white-space: nowrap;
+}
+.time-range select {
+  width: auto; min-height: 2.35rem; padding: .2rem .65rem;
+  border-radius: 999px; background: #0d0b18; border-color: var(--line-strong);
+  color: var(--text); font-size: .8rem; font-weight: 600;
+}
 .step-group { display: inline-flex; padding: .2rem; gap: .15rem; border: 1px solid var(--line-strong); border-radius: 999px; background: #0d0b18; }
 .step-group button { min-height: 2.25rem; padding: .2rem .85rem; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-size: .8rem; font-weight: 600; }
 .step-group button:hover { color: var(--text); background: #ffffff10; }
 .step-group button[aria-pressed='true'] { background: var(--gold); color: var(--on-accent); }
 #time-now { border-color: #f2c47e66; color: var(--gold); min-height: 2.75rem; font-weight: 600; }
-.time-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-3); align-items: end; }
+.time-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: .45rem; }
 .time-controls { display: grid; grid-template-columns: auto minmax(8.5rem, 1fr) minmax(6.2rem, .7fr) auto; gap: .4rem; align-items: center; }
 .time-controls button { min-width: 2.75rem; font-size: 1.05rem; }
 .time-clock { position: relative; }
@@ -474,7 +524,13 @@ dialog::backdrop { background: #07060ccc; backdrop-filter: blur(3px); }
   background: linear-gradient(160deg, #2a2342, #1d1a2e 60%); border: 1px solid var(--line-strong); border-radius: var(--radius);
   box-shadow: 0 12px 28px -20px #000; transition: border-color .16s ease, transform .16s ease;
 }
+.profile-card[data-active='true'] { border-color: #7fd6c288; }
 .profile-card:hover { border-color: #6a5c8c; transform: translateY(-1px); }
+.profile-head { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
+.profile-loaded {
+  display: inline-flex; align-items: center; padding: .1rem .5rem; border-radius: 999px;
+  border: 1px solid #7fd6c299; background: #7fd6c218; color: var(--teal); font-size: .74rem; font-weight: 600;
+}
 .profile-avatar {
   display: grid; place-items: center; width: 3rem; height: 3rem; border-radius: 50%; font-family: var(--font-display);
   font-size: 1.25rem; font-weight: 600; color: var(--gold); background: radial-gradient(circle at 30% 25%, #f2c47e30, #f2c47e0d); border: 1px solid #f2c47e66;
@@ -656,26 +712,42 @@ dialog::backdrop { background: #07060ccc; backdrop-filter: blur(3px); }
   .stage { border-radius: var(--radius); padding: .75rem; }
   .stage-title .eyebrow { display: none; }
   .stage-title h2 { font-size: 1.45rem; }
-  /* Title and the edit button share a row; the captions then use the full width. */
-  .stage-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 var(--space-2); }
+  /* Title and edit button share row 1; status and profile switcher stay compact above the wheel. */
+  .stage-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .15rem var(--space-2); }
   .stage-title { display: contents; }
   .stage-title h2 { grid-column: 1; grid-row: 1; }
-  #edit-birth { grid-column: 2; grid-row: 1; }
-  .stage-title #wheel-caption, .stage-title #chart-notice { grid-column: 1 / -1; }
   #edit-birth { min-height: 2.75rem; padding-inline: .75rem; font-size: .84rem; }
+  .stage-actions { grid-column: 2; grid-row: 1; display: flex; align-items: center; gap: .35rem; }
+  .stage-title #chart-profile-badge { grid-column: 1; grid-row: 2; justify-self: start; margin-top: 0; font-size: .7rem; line-height: 1.2; padding: .05rem .4rem; }
+  .stage-title #wheel-caption { grid-column: 2; grid-row: 2; justify-self: end; text-align: right; margin-top: 0; font-size: .76rem; }
+  .stage-title #chart-notice, .stage-title #chart-profile-status { grid-column: 1 / -1; margin-top: 0; font-size: .78rem; }
+  .chart-profile-bar:not([hidden]) {
+    grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .35rem;
+    position: relative;
+  }
+  .chart-profile-field { min-width: 0; }
+  .chart-profile-field select { width: 100%; max-width: none; min-width: 0; min-height: 2.75rem; }
+  #chart-profile-load, #chart-save-profile { min-height: 2.75rem; padding-inline: .7rem; font-size: .82rem; }
   .wheel { width: 100%; min-width: 0; }
   .legend { font-size: .7rem; gap: .25rem .8rem; }
   /* The natal and transit keys are the strip's own coloured labels, so the legend keeps only the line styles. */
   .legend span:not(.legend-aspect) { display: none; }
-  /* Phone dock: stepping and Now come first, then the instant, then exact entry. */
+  /* Phone dock: stepping and Now come first, then the instant and range, then scrub and exact entry. */
   .time-machine {
     padding: .75rem;
     gap: .55rem .45rem;
     grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem 4.6rem;
-    grid-template-areas: 'prev steps next now' 'readout readout readout readout' 'scrub scrub scrub scrub' 'date date time time';
+    grid-template-areas:
+      'prev steps next now'
+      'readout readout readout readout'
+      'range range range range'
+      'scrub scrub scrub scrub'
+      'date date time time';
   }
   .time-header, .time-actions, .time-body, .time-controls { display: contents; }
   .time-readout { grid-area: readout; }
+  .time-range { grid-area: range; justify-content: space-between; }
+  .time-range select { min-height: 2.5rem; flex: 0 1 11rem; }
   #previous-day { grid-area: prev; }
   .step-group { grid-area: steps; justify-self: stretch; display: grid; grid-template-columns: repeat(3, 1fr); }
   #next-day { grid-area: next; }
@@ -709,7 +781,17 @@ dialog::backdrop { background: #07060ccc; backdrop-filter: blur(3px); }
 }
 /* The narrowest phones: steps on their own row, Now between the day arrows, date and time stacked. */
 @media (max-width: 24rem) {
-  .time-machine { grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem; grid-template-areas: 'steps steps steps' 'prev now next' 'readout readout readout' 'scrub scrub scrub' 'date date date' 'time time time'; }
+  .time-machine {
+    grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
+    grid-template-areas:
+      'steps steps steps'
+      'prev now next'
+      'readout readout readout'
+      'range range range'
+      'scrub scrub scrub'
+      'date date date'
+      'time time time';
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .view { animation: none; }

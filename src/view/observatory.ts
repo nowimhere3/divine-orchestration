@@ -16,7 +16,9 @@ import { mountChartTools } from './chart-tools';
 import { bindTimeline, byId } from './timeline';
 import { mountEventSearch } from './event-search';
 import { mountProfiles } from './profile-panel';
+import type { ProfileController } from './profile-panel';
 import { mountExportStudio } from './export-studio';
+import { mountZonePicker } from './zone-picker';
 
 type Readings = 'natal' | 'transit' | 'aspects' | 'houses';
 type Unresolved = Extract<TimeResolution, { kind: 'unresolved' }>;
@@ -48,13 +50,9 @@ export function mountObservatory(engine: EphemeraEngine) {
   const controls = new AbortController();
   const { signal } = controls;
   const form = byId<HTMLFormElement>('birth-form');
-  byId('birth-alberta').addEventListener('click', () => {
-    const zone = byId<HTMLInputElement>('birth-zone');
-    zone.value = 'America/Edmonton';
-    zone.dispatchEvent(new Event('input', { bubbles: true }));
-  }, { signal });
   const unknown = byId<HTMLInputElement>('unknown-time');
   const birthTime = byId<HTMLInputElement>('birth-time');
+  const birthDate = byId<HTMLInputElement>('birth-date');
   const foldArea = byId('fold-choices');
   const fold = byId<HTMLSelectElement>('fold-choice');
   const data = byId('data-view');
@@ -87,6 +85,21 @@ export function mountObservatory(engine: EphemeraEngine) {
   const noticeEl = byId('chart-notice');
   const sourceEl = byId('export-source');
   const birthDialog = byId<HTMLDialogElement>('birth-dialog');
+  const profileBadge = byId('chart-profile-badge');
+  const chartProfileBar = byId('chart-profile-bar');
+  const chartProfileSelect = byId<HTMLSelectElement>('chart-profile-select');
+  const chartProfileLoad = byId<HTMLButtonElement>('chart-profile-load');
+  const chartSaveProfile = byId<HTMLButtonElement>('chart-save-profile');
+  const chartProfileStatus = byId('chart-profile-status');
+  const birthSaveState = byId('birth-save-state');
+  const birthProfileName = byId<HTMLInputElement>('birth-profile-name');
+  const birthProfileSave = byId<HTMLButtonElement>('birth-profile-save');
+  const birthProfileStatus = byId('birth-profile-status');
+  const zonePicker = mountZonePicker(
+    engine.modelDeltaTSeconds,
+    () => ({ date: birthDate.value, time: unknown.checked ? null : normalizeBirthTime(birthTime.value) }),
+    signal,
+  );
 
   function setTimeError(message: string) {
     timeError.textContent = message;
@@ -120,8 +133,61 @@ export function mountObservatory(engine: EphemeraEngine) {
       ? `Export is blocked: your new birth details were not calculated. It would describe the ${applied.demo ? 'Greenwich demonstration chart' : 'previous chart'} (${applied.text}). Open Edit birth details and calculate first.`
       : applied.demo ? `Export source: ${base}. Calculate your own birth details to export them.` : `Export source: ${base}.`;
     sourceEl.dataset.state = state;
+
+    const activeName = activeProfileId ? natal?.label ?? null : null;
+    if (pending) {
+      profileBadge.dataset.state = 'pending';
+      profileBadge.textContent = activeName ? `Unsaved edits · showing ${activeName}` : 'Unsaved edits';
+    } else if (applied.demo) {
+      profileBadge.dataset.state = 'demo';
+      profileBadge.textContent = 'Demonstration chart';
+    } else if (activeName) {
+      profileBadge.dataset.state = 'profile';
+      profileBadge.textContent = `Loaded profile: ${activeName}`;
+    } else {
+      profileBadge.dataset.state = 'unsaved';
+      profileBadge.textContent = 'Unsaved chart';
+    }
+
+    const canSave = Boolean(profiles?.isAvailable() && natal && !birthEdited && !attemptFailed);
+    chartSaveProfile.hidden = applied.demo || Boolean(activeProfileId) || birthEdited || attemptFailed;
+    birthProfileSave.disabled = !canSave;
+    if (birthEdited || attemptFailed) {
+      birthSaveState.textContent = 'Calculate the edited birth details before saving.';
+    } else if (activeName) {
+      birthSaveState.textContent = `Currently loaded: ${activeName}. Saving creates a new profile without overwriting it.`;
+    } else if (applied.demo) {
+      birthSaveState.textContent = 'Demonstration chart (Greenwich). Calculate your own birth details or save as a profile.';
+    } else {
+      birthSaveState.textContent = 'Calculated chart · ready to save as a profile.';
+    }
   }
   let activeProfileId: string | undefined;
+  let profiles: ProfileController | undefined;
+  function syncProfileControls(list: readonly NatalProfile[], available: boolean) {
+    const previous = chartProfileSelect.value;
+    if (!available || !list.length) {
+      const emptyOption = node('option', available ? 'No saved profiles' : 'Library unavailable');
+      emptyOption.value = '';
+      chartProfileSelect.replaceChildren(emptyOption);
+      chartProfileSelect.disabled = true;
+      chartProfileLoad.disabled = true;
+      chartProfileBar.hidden = true;
+      return;
+    }
+    chartProfileBar.hidden = false;
+    const options = list.map(profile => {
+      const option = node('option', profile.name);
+      option.value = profile.id;
+      return option;
+    });
+    chartProfileSelect.replaceChildren(...options);
+    const chosen = (activeProfileId && list.some(p => p.id === activeProfileId) ? activeProfileId : null)
+      ?? (previous && list.some(p => p.id === previous) ? previous : list[0].id);
+    chartProfileSelect.value = chosen;
+    chartProfileSelect.disabled = false;
+    chartProfileLoad.disabled = false;
+  }
   let frame = 0;
   const targets = () => PLANET_IDS.map(planetId => ({
       chartId: 'natal', planetId, longitudeDeg: natalPoints.get(planetId)?.longitudeDeg ?? null,
@@ -145,8 +211,8 @@ export function mountObservatory(engine: EphemeraEngine) {
     } };
   }, signal, () => birthEdited && (attemptFailed || !birthDialog.open)
     ? 'Export is blocked because your new birth details have not been calculated. Open Edit birth details and calculate first.' : '');
-  mountProfiles(engine.modelDeltaTSeconds, () => {
-    if (!natal || birthEdited) return null;
+  profiles = mountProfiles(engine.modelDeltaTSeconds, () => {
+    if (!natal || birthEdited || attemptFailed) return null;
     return { birth: natal.time.input, observer: natal.settings.observer,
       houseSystem: natal.settings.requestedHouseSystem === 'Placidus' ? 'Placidus' : 'WholeSign' };
   }, profile => calculateBirth(false, profile), (id, name, saved) => {
@@ -155,8 +221,15 @@ export function mountObservatory(engine: EphemeraEngine) {
       activeProfileId = name ? id : undefined;
       natal = { ...natal, label: name };
       exportStudio.invalidate();
+      refreshContext();
     }
-  }, signal);
+  }, signal, {
+    activeId: () => activeProfileId,
+    onSync: (list, available) => {
+      syncProfileControls(list, available);
+      refreshContext();
+    },
+  });
 
   const houses = () => natal?.houses.status === 'available' ? natal.houses.value : null;
   const birthSuffix = () => natal ? ' The wheel still shows the last calculated birth details.' : '';
@@ -247,6 +320,8 @@ export function mountObservatory(engine: EphemeraEngine) {
       byId<HTMLInputElement>('birth-lon').value = location ? String(location.longitudeDeg) : '';
       byId<HTMLSelectElement>('house-system').value = system;
       foldArea.hidden = true;
+      zonePicker.close();
+      zonePicker.sync();
       if (input.disambiguation) {
         const pending = resolveBirthTime({ ...input, disambiguation: undefined }, engine.modelDeltaTSeconds);
         if (pending.kind === 'unresolved' && pending.candidates) {
@@ -255,6 +330,8 @@ export function mountObservatory(engine: EphemeraEngine) {
         }
       }
     }
+    chartProfileStatus.textContent = '';
+    birthProfileStatus.textContent = '';
     natalFacts = natal.planets.status === 'available' ? natal.planets.value : [];
     natalPoints = availablePositions(natalFacts);
     birthAspects = chartAspects(natalPoints);
@@ -268,6 +345,7 @@ export function mountObservatory(engine: EphemeraEngine) {
           : `Birth time resolved with offset ${resolved.offset.value}.`;
     applied = { demo: example, text: describeBirth(input, location || null, resolved.kind === 'resolved' ? resolved.offset.value : undefined) };
     refreshContext();
+    profiles?.syncActive();
     if (!example) status.textContent = `Chart calculated for ${applied.text}. ${status.textContent}`;
     queueRedraw();
     return true;
@@ -422,10 +500,44 @@ export function mountObservatory(engine: EphemeraEngine) {
     if (event.target === fold) return;
     birthTime.disabled = unknown.checked;
     foldArea.hidden = true;
+    zonePicker.sync();
     byId('birth-status').textContent = 'Birth details changed. Calculate to update the wheel.';
+    birthProfileStatus.textContent = '';
     refreshContext();
   }, { signal });
-  birthDialog.addEventListener('close', refreshContext, { signal });
+  birthDialog.addEventListener('close', () => {
+    zonePicker.close();
+    refreshContext();
+  }, { signal });
+  birthProfileSave.addEventListener('click', () => void (async () => {
+    birthProfileStatus.textContent = '';
+    if (!profiles) return;
+    try {
+      const { profile, message } = await profiles.save(birthProfileName.value);
+      birthProfileName.value = '';
+      birthProfileStatus.textContent = `Saved “${profile.name}” to Personal Library.`;
+      void message;
+      refreshContext();
+    } catch (error) {
+      birthProfileStatus.textContent = error instanceof Error ? error.message : 'The profile could not be saved.';
+      if (!birthEdited && !attemptFailed) birthProfileName.focus();
+    }
+  })(), { signal });
+  byId('birth-open-library').addEventListener('click', () => {
+    if (birthDialog.open) birthDialog.close();
+  }, { signal });
+  chartSaveProfile.addEventListener('click', () => {
+    birthProfileStatus.textContent = '';
+    if (!birthDialog.open) birthDialog.showModal();
+    birthProfileName.focus();
+  }, { signal });
+  chartProfileLoad.addEventListener('click', () => void (async () => {
+    const id = chartProfileSelect.value;
+    if (!id || !profiles) return;
+    chartProfileStatus.textContent = '';
+    const result = await profiles.load(id);
+    if (!result.ok) chartProfileStatus.textContent = result.message;
+  })(), { signal });
   document.querySelector('.data-switch')!.addEventListener('click', event => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-view]');
     if (!button || !natal) return;

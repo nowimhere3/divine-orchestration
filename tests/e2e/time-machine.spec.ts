@@ -111,6 +111,86 @@ test('the scrub track marks today, describes the selection in words and is keybo
   await expect(marker).toBeVisible();
 });
 
+test('supports ±3, ±6 and ±12 month calendar ranges, preserves instant, recenters, and updates Today marker', async ({ page }) => {
+  await openApp(page);
+  const range = page.getByLabel('Range', { exact: true });
+  await expect(range).toHaveValue('3');
+  await expect(page.locator('#timeline-span')).toHaveText('±3 months');
+
+  // Leap-year month-end transition: 2024-05-31 ±3 months -> 2024-02-29 .. 2024-08-31
+  await page.getByLabel('Transit date', { exact: true }).fill('2024-05-31');
+  await page.getByLabel('Transit time (UTC)').fill('14:45');
+  await expect(epoch(page)).toHaveText('2024-05-31 · 14:45 UTC');
+  await expect(page.locator('#earliest-day')).toHaveText('2024-02-29');
+  await expect(page.locator('#latest-day')).toHaveText('2024-08-31');
+
+  // Switch to ±6 months: preserves selected instant, updates calendar endpoints (2023-11-30 .. 2024-11-30)
+  await range.selectOption('6');
+  await expect(epoch(page)).toHaveText('2024-05-31 · 14:45 UTC');
+  await expect(page.locator('#timeline-span')).toHaveText('±6 months');
+  await expect(page.locator('#earliest-day')).toHaveText('2023-11-30');
+  await expect(page.locator('#latest-day')).toHaveText('2024-11-30');
+
+  // Switch to ±12 months on leap day 2024-02-29 -> 2023-02-28 .. 2025-02-28
+  await page.getByLabel('Transit date', { exact: true }).fill('2024-02-29');
+  await range.selectOption('12');
+  await expect(epoch(page)).toHaveText('2024-02-29 · 14:45 UTC');
+  await expect(page.locator('#timeline-span')).toHaveText('±12 months');
+  await expect(page.locator('#earliest-day')).toHaveText('2023-02-28');
+  await expect(page.locator('#latest-day')).toHaveText('2025-02-28');
+
+  // Scrubbing to +150 days and shrinking range to ±3 months preserves the instant and recenters
+  const slider = page.getByRole('slider', { name: /Scrub by day/ });
+  await slider.fill('150');
+  await slider.dispatchEvent('input');
+  const scrubbedInstant = await epoch(page).innerText();
+  await range.selectOption('3');
+  await expect(epoch(page)).toHaveText(scrubbedInstant);
+  await expect(slider).toHaveValue('0');
+  await expect(page.locator('#earliest-day')).toHaveText('2024-04-28');
+  await expect(page.locator('#latest-day')).toHaveText('2024-10-28');
+
+  // Today marker appears when expanding range to cover today (~5 months from today)
+  await page.getByRole('button', { name: 'Now', exact: true }).click();
+  await range.selectOption('6');
+  await slider.fill('-140');
+  await slider.dispatchEvent('input');
+  await expect(page.locator('#now-marker')).toBeVisible();
+
+  // Named zone across DST transitions with ±6 months
+  await page.getByLabel('Display time zone').selectOption('named');
+  await page.locator('#named-zone').fill('America/New_York');
+  await page.locator('#named-zone').press('Tab');
+  await page.getByLabel('Transit date', { exact: true }).fill('2026-07-15');
+  await page.locator('#transit-time').fill('12:00');
+  await expect(epoch(page)).toHaveText('2026-07-15 · 12:00 America/New_York (UTC-04:00)');
+  await expect(page.locator('#earliest-day')).toHaveText('2026-01-15');
+  await expect(page.locator('#latest-day')).toHaveText('2027-01-15');
+});
+
+test('organizes Time Machine into three rows on desktop/tablet and avoids overflow across 1440, 768, 390 and 320 px', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+
+  for (const width of [1440, 768]) {
+    await page.setViewportSize({ width, height: 900 });
+    const row1 = (await page.locator('.time-header').boundingBox())!;
+    const row2 = (await page.locator('.time-scrub').boundingBox())!;
+    const row3 = (await page.locator('.time-controls').boundingBox())!;
+    const zoneRow = (await page.locator('.zone-controls').boundingBox())!;
+    expect(row2.y).toBeGreaterThanOrEqual(row1.y + row1.height - 1);
+    expect(row3.y).toBeGreaterThanOrEqual(row2.y + row2.height - 1);
+    expect(zoneRow.y).toBeGreaterThanOrEqual(row3.y + row3.height - 1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+  }
+
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+    await expect(page.getByLabel('Range', { exact: true })).toBeVisible();
+  }
+});
+
 test('a phone keeps stepping and Now on the first screen, above the tab bar, with or without a selection', async ({ browser, browserName }) => {
   test.skip(browserName !== 'chromium', 'Phone emulation is exercised in Chromium.');
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });

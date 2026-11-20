@@ -10,14 +10,26 @@ const maxDay = Date.parse('2650-01-03');
 /** Time of day is free within the last permitted date. */
 const minInstant = minDay;
 const maxInstant = maxDay + dayMs - minuteMs;
-const radius = 90;
 const dateAt = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const clockAt = (ms: number) => new Date(ms).toISOString().slice(11, ms % minuteMs ? 19 : 16);
 const dayStart = (ms: number) => Math.floor(ms / dayMs) * dayMs;
 const clockPattern = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
 
+export const RANGE_MONTHS = [3, 6, 12] as const;
+export type RangeMonths = (typeof RANGE_MONTHS)[number];
 export type TimeStep = 'hour' | 'day' | 'week';
 const stepMs: Record<TimeStep, number> = { hour: hourMs, day: dayMs, week: 7 * dayMs };
+
+/** Calendar-month window around centerDayMs (UTC midnight), clamped to the supported ephemeris range. */
+export function timelineBounds(centerDayMs: number, months: RangeMonths = 3) {
+  const centerDate = Temporal.PlainDate.from(dateAt(centerDayMs));
+  const start = Date.parse(`${centerDate.subtract({ months }).toString()}T00:00:00Z`);
+  const end = Date.parse(`${centerDate.add({ months }).toString()}T00:00:00Z`);
+  return {
+    first: Math.max(minDay, start),
+    last: Math.min(maxDay, end),
+  };
+}
 
 export function byId<T extends HTMLElement = HTMLElement>(id: string) {
   const element = document.getElementById(id);
@@ -45,6 +57,8 @@ export function bindTimeline(change: (date: string, time: string, label: string)
   const date = byId<HTMLInputElement>('transit-date');
   const time = byId<HTMLInputElement>('transit-time');
   const slider = byId<HTMLInputElement>('timeline');
+  const rangeSelect = byId<HTMLSelectElement>('timeline-range');
+  const rangeSpan = byId('timeline-span');
   const previous = byId<HTMLButtonElement>('previous-day');
   const next = byId<HTMLButtonElement>('next-day');
   const marker = byId('now-marker');
@@ -52,6 +66,7 @@ export function bindTimeline(change: (date: string, time: string, label: string)
   let center = dayStart(Date.now());
   let selected = center;
   let step: TimeStep = 'day';
+  let rangeMonths: RangeMonths = 3;
 
   const menu = byId<HTMLSelectElement>('display-zone');
   const named = byId<HTMLInputElement>('named-zone');
@@ -89,9 +104,12 @@ export function bindTimeline(change: (date: string, time: string, label: string)
   function display(instant: number, recenter = false) {
     selected = Math.min(maxInstant, Math.max(minInstant, instant));
     const day = dayStart(selected);
-    if (recenter || Math.abs(day - center) > radius * dayMs) center = day;
-    const first = Math.max(minDay, center - radius * dayMs);
-    const last = Math.min(maxDay, center + radius * dayMs);
+    let { first, last } = timelineBounds(center, rangeMonths);
+    if (recenter || day < first || day > last) {
+      center = day;
+      ({ first, last } = timelineBounds(center, rangeMonths));
+    }
+    rangeSpan.textContent = `±${rangeMonths} months`;
     const local = wall(selected);
     date.value = local.date;
     time.value = local.clock;
@@ -208,6 +226,13 @@ export function bindTimeline(change: (date: string, time: string, label: string)
   applyZone();
 
   slider.addEventListener('input', () => display(center + slider.valueAsNumber * dayMs + (selected - dayStart(selected))), { signal });
+  rangeSelect.addEventListener('change', () => {
+    const parsed = Number(rangeSelect.value) as RangeMonths;
+    if ((RANGE_MONTHS as readonly number[]).includes(parsed)) {
+      rangeMonths = parsed;
+      display(selected);
+    }
+  }, { signal });
   previous.addEventListener('click', () => display(selected - stepMs[step]), { signal });
   next.addEventListener('click', () => display(selected + stepMs[step]), { signal });
   for (const button of stepButtons) button.addEventListener('click', () => setStep(button.dataset.step as TimeStep), { signal });

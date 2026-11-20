@@ -30,13 +30,25 @@ export function describeProfile(profile: NatalProfile) {
 
 const initials = (name: string) => [...name.trim().split(/\s+/).slice(0, 2).map(word => [...word][0] ?? '')].join('').toUpperCase() || '·';
 
+export interface ProfileController {
+  save(name: string): Promise<{ profile: NatalProfile; message: string }>;
+  load(id: string): Promise<{ ok: boolean; message: string }>;
+  list(): readonly NatalProfile[];
+  isAvailable(): boolean;
+  syncActive(): void;
+}
+
 export function mountProfiles(
   deltaT: (year: number) => number,
   current: () => ProfileSettings | null,
   use: (profile: NatalProfile) => boolean,
   changed: (id: string, name: string | null, saved?: ProfileSettings) => void,
   signal: AbortSignal,
-) {
+  options?: {
+    activeId?: () => string | undefined;
+    onSync?: (profiles: readonly NatalProfile[], available: boolean) => void;
+  },
+): ProfileController {
   const validate = (value: unknown) => readProfile(value, birth => resolveBirthTime(birth, deltaT).kind !== 'unresolved');
   const store = profileLibrary(validate);
   const controls = byId<HTMLFieldSetElement>('profile-controls');
@@ -80,6 +92,8 @@ export function mountProfiles(
     const item = node('li');
     item.className = 'profile-card';
     item.dataset.profileId = profile.id;
+    const isActive = options?.activeId?.() === profile.id;
+    if (isActive) item.dataset.active = 'true';
     const avatar = node('span', initials(profile.name));
     avatar.className = 'profile-avatar';
     avatar.setAttribute('aria-hidden', 'true');
@@ -106,6 +120,11 @@ export function mountProfiles(
       const title = node('h3', profile.name);
       title.className = 'profile-name';
       head.append(title);
+      if (isActive) {
+        const badge = node('span', 'Loaded');
+        badge.className = 'profile-loaded';
+        head.append(badge);
+      }
     }
     const facts = node('ul');
     facts.className = 'profile-facts';
@@ -133,6 +152,7 @@ export function mountProfiles(
     cards.replaceChildren(...profiles.map(card));
     empty.hidden = profiles.length > 0 || !available;
     controls.disabled = restore.disabled = backup.disabled = busy || !available;
+    options?.onSync?.(profiles, available);
     focus?.()?.focus();
   }
 
@@ -155,15 +175,22 @@ export function mountProfiles(
 
   const find = (id: string) => profiles.find(profile => profile.id === id);
 
-  byId('profile-save').addEventListener('click', () => void run(async () => {
+  async function saveProfile(rawName: string) {
+    if (!available) throw new Error('The local profile library is unavailable.');
     const settings = current();
     if (!settings) throw new Error('Calculate the edited birth details before saving.');
-    const profile = { ...settings, name: profileName(names.value), id: crypto.randomUUID() };
+    const profile = { ...settings, name: profileName(rawName), id: crypto.randomUUID() };
     await store.add(profile);
     changed(profile.id, profile.name, settings);
     await refresh();
+    render();
+    return { profile, message: 'Profile saved locally.' };
+  }
+
+  byId('profile-save').addEventListener('click', () => void run(async () => {
+    const { message } = await saveProfile(names.value);
     names.value = '';
-    return 'Profile saved locally.';
+    return message;
   }, () => byId('profile-save')), { signal });
 
   async function load(id: string) {
@@ -270,4 +297,31 @@ export function mountProfiles(
     available = true;
     return skipped ? `${skipped} invalid profile records were skipped.` : 'Library ready.';
   });
+
+  return {
+    save: saveProfile,
+    async load(id: string) {
+      if (busy || !available) return { ok: false, message: 'The profile library is busy or unavailable.' };
+      busy = true;
+      say('');
+      render();
+      let message = '';
+      let ok = false;
+      try {
+        message = await load(id);
+        say(message);
+        ok = message === 'Profile loaded.';
+      } catch (error) {
+        message = error instanceof Error ? error.message : 'The library action failed.';
+        say(message);
+      } finally {
+        busy = false;
+        render();
+      }
+      return { ok, message };
+    },
+    list: () => profiles,
+    isAvailable: () => available,
+    syncActive: () => render(),
+  };
 }
