@@ -719,3 +719,23 @@ dialog::backdrop { background: #07060ccc; backdrop-filter: blur(3px); }
   button, .app-nav a, .wheel [data-point-key], .wheel .planet-target, .wheel .wheel-aspects { transition: none; }
   .wheel .wheel-highlight[data-fresh] line { animation: none; }
 }
+
+.zone-controls { grid-column: 1 / -1; display: flex; align-items: end; flex-wrap: wrap; gap: .5rem 1rem; }
+.zone-controls label { display: grid; gap: .25rem; min-width: 0; max-width: 100%; color: var(--muted); font-size: .82rem; }
+.zone-controls select, .zone-controls input { max-width: 100%; }
+#zone-status { color: var(--muted); font-size: .85rem; }
+
+/* Which chart is on screen (U1.1): field errors, the calculated-chart line and the export source line. */
+.field-error { margin: 0; padding: .45rem .7rem; border: 1px solid #f08ba099; border-left-width: 3px; border-radius: var(--radius-sm); background: #f08ba01a; color: #ffd3dc; font-size: .84rem; line-height: 1.45; }
+.field-error[hidden] { display: none; }
+input[aria-invalid='true'] { border-color: var(--rose); box-shadow: 0 0 0 1px var(--rose); }
+#chart-notice[data-state], .source-note[data-state] { padding: .15rem .6rem; border: 1px solid var(--line); border-left-width: 3px; border-radius: var(--radius-sm); font-size: .8rem; line-height: 1.45; color: var(--text); }
+#chart-notice[data-state='custom'], .source-note[data-state='custom'] { border-color: #7fd6c299; background: #7fd6c212; }
+#chart-notice[data-state='custom']::before, .source-note[data-state='custom']::before { content: '✓ '; color: var(--teal); font-weight: 700; }
+#chart-notice[data-state='demo'], .source-note[data-state='demo'] { border-color: #f2c47e99; background: #f2c47e12; }
+#chart-notice[data-state='pending'], .source-note[data-state='pending'] { border-color: #f08ba0cc; background: #f08ba01a; }
+#chart-notice[data-state='pending']::before, .source-note[data-state='pending']::before { content: '! '; color: var(--rose); font-weight: 700; }
+.source-note { margin: 0 0 var(--space-2); }
+@media (max-width: 44rem) {
+  #chart-notice[data-state] { padding: 0 .5rem; border-width: 0 0 0 3px; font-size: .76rem; line-height: 1.35; }
+}

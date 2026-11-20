@@ -1,3 +1,4 @@
+import { albertaRule, zoneCandidates } from './civil-zone';
 import { Temporal } from '@js-temporal/polyfill';
 import { ATOMIC_OFFSETS_VERIFIED_BEFORE, isKnownLeapMidnight, taiMinusUtc } from './atomic-offsets';
 
@@ -42,8 +43,8 @@ export interface ResolvedInstant {
   readonly offset: {
     readonly value: string;
     readonly seconds: number;
-    readonly source: 'iana-runtime' | 'user-override';
-    readonly certainty: 'runtime-zone-data' | 'historical-estimate' | 'user-supplied';
+    readonly source: 'iana-runtime' | 'alberta-rule' | 'user-override';
+    readonly certainty: 'runtime-zone-data' | 'official-rule' | 'historical-estimate' | 'user-supplied';
     readonly zone: string | null;
     readonly transition: 'unique' | 'fold' | 'gap' | null;
     readonly foldChoice: 'earlier' | 'later' | null;
@@ -93,18 +94,21 @@ function parseOffset(text: string) {
   return sign === '-' ? -seconds : seconds;
 }
 
-function zoneCandidates(wall: Temporal.PlainDateTime, zone: string) {
-  const earlier = wall.toZonedDateTime(zone, { disambiguation: 'earlier' });
-  const later = wall.toZonedDateTime(zone, { disambiguation: 'later' });
-  const candidates = earlier.equals(later) ? [earlier] : [earlier, later];
-  return candidates.filter(candidate => candidate.toPlainDateTime().equals(wall));
-}
-
 function describeCandidate(candidate: Temporal.ZonedDateTime, leap: boolean): OffsetCandidate {
   const { epochMilliseconds, offset } = candidate;
   const iso = formatUtc(epochMilliseconds, leap);
   const hasUtcRecord = taiMinusUtc(jdAtEpoch(epochMilliseconds)) !== null;
   return { utc: hasUtcRecord ? iso : null, historicalUt1Iso: hasUtcRecord ? null : iso.slice(0, -1), offset };
+}
+
+/**
+ * Pads a one-digit hour ("2:00" becomes "02:00") and trims the text. It never guesses: anything else,
+ * including AM/PM, is returned unchanged so the strict parser reports it instead of reinterpreting it.
+ */
+export function normalizeBirthTime(text: string): string {
+  const trimmed = text.trim();
+  const match = /^(\d{1,2})(:\d{2}(?::\d{2}(?:\.\d{1,3})?)?)$/.exec(trimmed);
+  return match ? `${match[1].padStart(2, '0')}${match[2]}` : trimmed;
 }
 
 /** Resolve civil inputs using the approved engine's model, passed as a function. */
@@ -194,6 +198,7 @@ export function resolveBirthTime(
   const deltaTYear = year + (epochMs - start) / (daysInYear * MS_PER_DAY);
   const deltaTSeconds = modelDeltaTSeconds(deltaTYear);
   if (!Number.isFinite(deltaTSeconds)) return fail('delta-t-unavailable');
+  const official = manualSeconds === null && !!timeZone && albertaRule(timeZone, date);
   const historicalZone = manualSeconds === null && (year < 1970 || plainDate.year < 1970);
   if (historicalZone) warnings.push('historical-zone-offset-uncertain');
   const taiMinusUtcSeconds = taiMinusUtc(jdAtEpoch(epochMs));
@@ -215,8 +220,8 @@ export function resolveBirthTime(
     offset: {
       value: offsetText,
       seconds: offsetSeconds,
-      source: manualSeconds === null ? 'iana-runtime' : 'user-override',
-      certainty: manualSeconds !== null ? 'user-supplied' : historicalZone ? 'historical-estimate' : 'runtime-zone-data',
+      source: manualSeconds !== null ? 'user-override' : official ? 'alberta-rule' : 'iana-runtime',
+      certainty: manualSeconds !== null ? 'user-supplied' : official ? 'official-rule' : historicalZone ? 'historical-estimate' : 'runtime-zone-data',
       zone: timeZone ?? null,
       transition: !timeZone ? null : candidates.length === 0 ? 'gap' : candidates.length === 1 ? 'unique' : 'fold',
       foldChoice,

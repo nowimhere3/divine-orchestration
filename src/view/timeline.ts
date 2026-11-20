@@ -1,3 +1,7 @@
+import { Temporal } from '@js-temporal/polyfill';
+import { albertaRule, localClock, zoneCandidates } from '../time/civil-zone';
+import { taiMinusUtc } from '../time/atomic-offsets';
+
 const minuteMs = 60_000;
 const hourMs = 3_600_000;
 const dayMs = 86_400_000;
@@ -8,9 +12,9 @@ const minInstant = minDay;
 const maxInstant = maxDay + dayMs - minuteMs;
 const radius = 90;
 const dateAt = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-const clockAt = (ms: number) => new Date(ms).toISOString().slice(11, 16);
+const clockAt = (ms: number) => new Date(ms).toISOString().slice(11, ms % minuteMs ? 19 : 16);
 const dayStart = (ms: number) => Math.floor(ms / dayMs) * dayMs;
-const clockPattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+const clockPattern = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
 
 export type TimeStep = 'hour' | 'day' | 'week';
 const stepMs: Record<TimeStep, number> = { hour: hourMs, day: dayMs, week: 7 * dayMs };
@@ -37,7 +41,7 @@ export function relativeLabel(selectedMs: number, nowMs: number) {
   return relative.format(Math.round(diff / size), unit);
 }
 
-export function bindTimeline(change: (date: string, time: string) => void, signal: AbortSignal) {
+export function bindTimeline(change: (date: string, time: string, label: string) => void, signal: AbortSignal) {
   const date = byId<HTMLInputElement>('transit-date');
   const time = byId<HTMLInputElement>('transit-time');
   const slider = byId<HTMLInputElement>('timeline');
@@ -49,30 +53,80 @@ export function bindTimeline(change: (date: string, time: string) => void, signa
   let selected = center;
   let step: TimeStep = 'day';
 
+  const menu = byId<HTMLSelectElement>('display-zone');
+  const named = byId<HTMLInputElement>('named-zone');
+  const fold = byId<HTMLSelectElement>('transit-fold');
+  const message = byId('zone-status');
+  const key = 'divine-orchestration.display-zone.v1';
+  let zone = 'UTC';
+  let zoneError = '';
+  let occurrences: number[] = [];
+
+  function applyZone() {
+    byId('named-zone-field').hidden = menu.value !== 'named';
+    const requested = menu.value === 'device' ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : menu.value === 'alberta' ? 'America/Edmonton' : menu.value === 'named' ? named.value.trim() : 'UTC';
+    try {
+      if (!/^[a-z][a-z0-9_+\-/]*$/i.test(requested)) throw new RangeError();
+      new Intl.DateTimeFormat('en', { timeZone: requested });
+      zone = requested;
+      zoneError = '';
+    } catch {
+      zoneError = 'Enter a valid IANA zone. The clock still uses ';
+      message.textContent = zoneError + zone + '.';
+      return;
+    }
+    try { localStorage.setItem(key, JSON.stringify({ mode: menu.value, name: named.value })); } catch { /* Storage is optional. */ }
+    date.min = wall(minInstant).date;
+    date.max = wall(maxInstant).date;
+    display(selected);
+  }
+
+  function wall(ms: number) {
+    return zone === 'UTC' ? { date: dateAt(ms), clock: clockAt(ms), offset: '+00:00' } : localClock(ms, zone);
+  }
+
   function display(instant: number, recenter = false) {
     selected = Math.min(maxInstant, Math.max(minInstant, instant));
     const day = dayStart(selected);
     if (recenter || Math.abs(day - center) > radius * dayMs) center = day;
     const first = Math.max(minDay, center - radius * dayMs);
     const last = Math.min(maxDay, center + radius * dayMs);
-    date.value = dateAt(selected);
-    time.value = clockAt(selected);
+    const local = wall(selected);
+    date.value = local.date;
+    time.value = local.clock;
+    const abt = albertaRule(zone, local.date);
+    const name = abt ? 'ABT' : zone;
+    const epochLabel = zone === 'UTC' ? (taiMinusUtc(selected / dayMs + 2440587.5) === null ? 'approx. UT1' : 'UTC')
+      : name + ' (UTC' + local.offset + ')';
+    const label = local.date + ' · ' + local.clock + ' ' + epochLabel;
+    document.querySelector('.time-clock .sr-only')!.textContent = 'Transit time (' + name + ')';
+    const badge = document.querySelector('.time-clock abbr')!;
+    badge.textContent = zone === 'UTC' ? 'UTC' : abt ? 'ABT' : 'Local';
+    badge.setAttribute('title', zone + ' · UTC' + local.offset);
+    byId('transit-status').hidden = true;
+    message.textContent = zoneError + zone + ' · UTC' + local.offset;
+    byId('transit-fold-field').hidden = true;
+    occurrences = [];
     slider.min = String((first - center) / dayMs);
     slider.max = String((last - center) / dayMs);
     slider.value = String((day - center) / dayMs);
-    slider.setAttribute('aria-valuetext', `${date.value} ${time.value} UTC`);
-    byId('earliest-day').textContent = dateAt(first);
-    byId('latest-day').textContent = dateAt(last);
+    slider.setAttribute('aria-valuetext', `${date.value} ${time.value} ${epochLabel}`);
+    byId('earliest-day').textContent = wall(first + selected - day).date;
+    byId('latest-day').textContent = wall(last + selected - day).date;
     previous.disabled = selected <= minInstant;
     next.disabled = selected >= maxInstant;
     byId('time-relative').textContent = relativeLabel(selected, Date.now());
     placeMarker(first, last);
-    change(date.value, time.value);
+    change(dateAt(selected), clockAt(selected), label);
   }
 
   /** Marks today on the scrub track whenever it falls inside the visible window. */
   function placeMarker(first: number, last: number) {
-    const today = dayStart(Date.now());
+    const nowMs = Date.now();
+    const utcDay = dayStart(nowMs);
+    const sampledLocalDate = wall(utcDay + selected - dayStart(selected)).date;
+    const today = utcDay + Date.parse(wall(nowMs).date) - Date.parse(sampledLocalDate);
     const span = last - first;
     const inside = span > 0 && today >= first && today <= last;
     marker.hidden = !inside;
@@ -91,38 +145,67 @@ export function bindTimeline(change: (date: string, time: string) => void, signa
     display(Math.floor(current / minuteMs) * minuteMs, true);
   }
 
-  function readDate(commit: boolean) {
-    const day = Date.parse(date.value);
-    // WebKit can expose the edited value before it updates native range validity.
-    if (Number.isFinite(day) && day >= minDay && day <= maxDay) {
-      const instant = day + (selected - dayStart(selected));
-      if (instant !== selected || commit) display(instant, dayStart(instant) !== dayStart(selected));
-    } else if (date.value || commit) {
-      if (commit) date.value = dateAt(selected);
-      const status = byId('transit-status');
-      status.textContent = 'Choose a transit date from 1550-01-01 through 2650-01-03.';
+  function readWall(commit: boolean) {
+    byId('transit-fold-field').hidden = true;
+    occurrences = [];
+    const status = byId('transit-status');
+    function reject(text: string) {
+      if (commit) display(selected);
+      status.textContent = text;
       status.hidden = false;
     }
-  }
-  date.addEventListener('input', () => readDate(false), { signal });
-  date.addEventListener('change', () => readDate(true), { signal });
-
-  function readTime(commit: boolean) {
-    const value = time.value.trim();
-    if (clockPattern.test(value)) {
-      const [hours, minutes] = value.split(':').map(Number);
-      const instant = dayStart(selected) + hours * hourMs + minutes * minuteMs;
-      if (instant !== selected) display(instant);
+    if (!clockPattern.test(time.value)) {
+      if (commit) reject('Enter a time using the 24-hour clock (HH:MM).');
       return;
     }
-    if (!commit) return;
-    time.value = clockAt(selected);
-    const status = byId('transit-status');
-    status.textContent = 'Enter a UTC time as HH:MM using the 24-hour clock.';
-    status.hidden = false;
+    if (date.value.length !== 10 || date.value < date.min || date.value > date.max) {
+      if (commit || date.value) reject('Choose a transit date from ' + date.min + ' through ' + date.max + '.');
+      return;
+    }
+    const local = Temporal.PlainDateTime.from(date.value + 'T' + time.value);
+    const candidates = zoneCandidates(local, zone);
+    if (!candidates.length) {
+      reject('This local time was skipped by a clock change. Choose another time.');
+      return;
+    }
+    if (candidates.length > 1) {
+      occurrences = candidates.map(candidate => candidate.epochMilliseconds);
+      fold.replaceChildren(new Option('Choose an offset', ''), ...candidates.map((candidate, i) =>
+        new Option((i ? 'Later' : 'Earlier') + ' · UTC' + candidate.offset, String(i))));
+      byId('transit-fold-field').hidden = false;
+      status.hidden = false;
+      status.textContent = 'This local time occurs twice. Choose an offset to update the chart.';
+      return;
+    }
+    const instant = candidates[0].epochMilliseconds;
+    if (instant < minInstant || instant > maxInstant) {
+      reject('This instant falls outside the supported time range.');
+      return;
+    }
+    status.hidden = true;
+    display(instant, dayStart(instant) !== dayStart(selected));
   }
-  time.addEventListener('input', () => readTime(false), { signal });
-  time.addEventListener('change', () => readTime(true), { signal });
+  for (const field of [date, time]) {
+    field.addEventListener('input', () => readWall(false), { signal });
+    field.addEventListener('change', () => readWall(true), { signal });
+  }
+  fold.addEventListener('change', () => {
+    if (fold.value !== '') {
+      byId('transit-status').hidden = true;
+      display(occurrences[Number(fold.value)], true);
+    }
+  }, { signal });
+  menu.addEventListener('change', applyZone, { signal });
+  named.addEventListener('change', applyZone, { signal });
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) ?? 'null');
+    if (saved && ['utc', 'device', 'alberta', 'named'].includes(saved.mode) && typeof saved.name === 'string') {
+      menu.value = saved.mode;
+      named.value = saved.name;
+    }
+  } catch { /* Use UTC when storage is unavailable. */ }
+  selected = Math.floor(Date.now() / minuteMs) * minuteMs;
+  applyZone();
 
   slider.addEventListener('input', () => display(center + slider.valueAsNumber * dayMs + (selected - dayStart(selected))), { signal });
   previous.addEventListener('click', () => display(selected - stepMs[step]), { signal });
@@ -130,5 +213,8 @@ export function bindTimeline(change: (date: string, time: string) => void, signa
   for (const button of stepButtons) button.addEventListener('click', () => setStep(button.dataset.step as TimeStep), { signal });
   byId('time-now').addEventListener('click', now, { signal });
   setStep('day');
-  now();
+  if (!date.value) {
+    menu.value = 'utc';
+    applyZone();
+  }
 }

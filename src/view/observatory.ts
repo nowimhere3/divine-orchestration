@@ -4,7 +4,7 @@ import type { Chart, PlanetFact, PlanetId, TimedChart } from '../domain/chart';
 import type { EphemeraEngine, Observer } from '../engine/ephemera';
 import type { SnapshotInput } from '../export/snapshot';
 import type { NatalProfile } from '../store/library';
-import { resolveBirthTime } from '../time/resolve';
+import { normalizeBirthTime, resolveBirthTime } from '../time/resolve';
 import type { BirthTimeInput, OffsetCandidate, TimeResolution } from '../time/resolve';
 import { AstroWheel, pointKey } from './astro-wheel';
 import { availablePositions, calculateNatal, calculatePositions, chartAspects, planetName } from './chart-data';
@@ -22,7 +22,7 @@ type Unresolved = Extract<TimeResolution, { kind: 'unresolved' }>;
 
 const timeErrors: Record<Unresolved['reason'], string> = {
   'invalid-date': 'Enter a valid birth date.',
-  'invalid-time': 'Enter a local time as HH:MM or HH:MM:SS.',
+  'invalid-time': 'Enter a local time as H:MM or HH:MM (24-hour), optionally with seconds.',
   'invalid-zone': 'Enter an IANA time zone such as Europe/London.',
   'invalid-offset': 'Enter a recorded offset such as +05:30 or −04:00 (using the minus key).',
   'missing-zone-or-offset': 'Enter a time zone or a recorded UTC offset.',
@@ -47,6 +47,11 @@ export function mountObservatory(engine: EphemeraEngine) {
   const controls = new AbortController();
   const { signal } = controls;
   const form = byId<HTMLFormElement>('birth-form');
+  byId('birth-alberta').addEventListener('click', () => {
+    const zone = byId<HTMLInputElement>('birth-zone');
+    zone.value = 'America/Edmonton';
+    zone.dispatchEvent(new Event('input', { bubbles: true }));
+  }, { signal });
   const unknown = byId<HTMLInputElement>('unknown-time');
   const birthTime = byId<HTMLInputElement>('birth-time');
   const foldArea = byId('fold-choices');
@@ -67,10 +72,52 @@ export function mountObservatory(engine: EphemeraEngine) {
   let reading: Readings = 'natal';
   let selectedDate = '';
   let selectedTime = '';
+  let selectedLabel = '';
   let selectedTt: number | null = null;
   let transitChart: TimedChart | null = null;
   let provenance: SnapshotInput['engine'] = null;
   let birthEdited = false;
+  // What the wheel currently shows, in words, and whether a failed attempt is waiting for correction.
+  let applied = { demo: true, text: '' };
+  let attemptFailed = false;
+  const timeError = byId('birth-time-error');
+  const noticeEl = byId('chart-notice');
+  const sourceEl = byId('export-source');
+  const birthDialog = byId<HTMLDialogElement>('birth-dialog');
+
+  function setTimeError(message: string) {
+    timeError.textContent = message;
+    timeError.hidden = !message;
+    if (message) birthTime.setAttribute('aria-invalid', 'true');
+    else birthTime.removeAttribute('aria-invalid');
+  }
+
+  const coordinates = (place: Observer | null | false | undefined) => place
+    ? `${Math.abs(place.latitudeDeg).toFixed(2)}°${place.latitudeDeg < 0 ? 'S' : 'N'} ${Math.abs(place.longitudeDeg).toFixed(2)}°${place.longitudeDeg < 0 ? 'W' : 'E'}`
+    : 'no birthplace coordinates';
+
+  function describeBirth(input: BirthTimeInput, place: Observer | null, offset?: string) {
+    const clock = input.time === null ? 'birth time unknown' : input.time;
+    const zone = input.timeZone || (input.offsetOverride ? `recorded offset ${input.offsetOverride}` : '');
+    return [`${input.date} ${clock}`, zone && offset ? `${zone} (UTC${offset})` : zone, coordinates(place)].filter(Boolean).join(' · ');
+  }
+
+  /** One statement of which chart is on screen, shown above the chart and in Export. */
+  function refreshContext() {
+    const pending = birthEdited && (attemptFailed || !birthDialog.open);
+    const lead = applied.demo ? 'Demonstration chart (Greenwich), not your birth details' : 'Calculated chart';
+    const base = `${lead}: ${applied.text}`;
+    const state = pending ? 'pending' : applied.demo ? 'demo' : 'custom';
+    const notice = pending
+      ? `Not applied: your new birth details have not been calculated. The chart still shows the ${applied.demo ? 'Greenwich demonstration chart' : 'previous chart'}: ${applied.text}.`
+      : applied.demo ? 'Greenwich demo chart, not yours. Use Edit birth details.' : `${base}.`;
+    noticeEl.textContent = notice;
+    noticeEl.dataset.state = state;
+    sourceEl.textContent = pending
+      ? `Export is blocked: your new birth details were not calculated. It would describe the ${applied.demo ? 'Greenwich demonstration chart' : 'previous chart'} (${applied.text}). Open Edit birth details and calculate first.`
+      : applied.demo ? `Export source: ${base}. Calculate your own birth details to export them.` : `Export source: ${base}.`;
+    sourceEl.dataset.state = state;
+  }
   let activeProfileId: string | undefined;
   let frame = 0;
   const targets = () => PLANET_IDS.map(planetId => ({
@@ -93,7 +140,8 @@ export function mountObservatory(engine: EphemeraEngine) {
       aspects: [...birthAspects, ...transitAspects],
       context: { selectedAt, referenceAt: selectedAt, eventSearch: null },
     } };
-  }, signal);
+  }, signal, () => birthEdited && (attemptFailed || !birthDialog.open)
+    ? 'Export is blocked because your new birth details have not been calculated. Open Edit birth details and calculate first.' : '');
   mountProfiles(engine.modelDeltaTSeconds, () => {
     if (!natal || birthEdited) return null;
     return { birth: natal.time.input, observer: natal.settings.observer,
@@ -129,7 +177,7 @@ export function mountObservatory(engine: EphemeraEngine) {
     const choice = foldArea.hidden ? '' : fold.value;
     return {
       date: byId<HTMLInputElement>('birth-date').value,
-      time: unknown.checked ? null : birthTime.value.trim(),
+      time: unknown.checked ? null : normalizeBirthTime(birthTime.value),
       ...(timezone ? { timeZone: timezone } : {}),
       ...(offset && !unknown.checked ? { offsetOverride: offset } : {}),
       ...(choice === 'earlier' || choice === 'later' ? { disambiguation: choice } : {}),
@@ -155,17 +203,32 @@ export function mountObservatory(engine: EphemeraEngine) {
     if (location === false) {
       const lat = byId<HTMLInputElement>('birth-lat').value;
       const lon = byId<HTMLInputElement>('birth-lon').value;
+      attemptFailed = true;
       status.textContent = (!lat !== !lon
         ? 'Enter both latitude and longitude, or leave both blank. Nothing was calculated or saved.'
         : 'Enter both coordinates with latitude between −90° and 90° and longitude from −180° to 180°, or leave both blank.') + birthSuffix();
+      refreshContext();
       return false;
     }
     const resolved = resolveBirthTime(input, engine.modelDeltaTSeconds);
     if (resolved.kind === 'unresolved') {
       if (resolved.candidates) showFold(resolved.candidates);
-      status.textContent = timeErrors[resolved.reason] + birthSuffix();
+      attemptFailed = true;
+      if (!profile && (resolved.reason === 'invalid-time' || resolved.reason === 'nonexistent-wall-time')) {
+        const typed = birthTime.value.trim();
+        setTimeError(resolved.reason === 'invalid-time'
+          ? `${typed ? `“${typed}” is not a valid time. ` : 'Enter a birth time. '}Use the 24-hour clock as H:MM or HH:MM, for example 2:00, 02:00 or 14:30. AM and PM are not accepted (2:00 PM is 14:00).`
+          : `${timeErrors[resolved.reason]}`);
+        status.textContent = `The birth time needs attention, so the chart was not updated.${birthSuffix()}`;
+        birthTime.focus();
+      } else {
+        status.textContent = timeErrors[resolved.reason] + birthSuffix();
+      }
+      refreshContext();
       return false;
     }
+    setTimeError('');
+    attemptFailed = false;
     const system = profile?.houseSystem ?? (byId<HTMLSelectElement>('house-system').value === 'Placidus' ? 'Placidus' : 'WholeSign');
     const label = profile?.name ?? (!birthEdited ? natal?.label ?? null : null);
     natal = { ...calculateNatal(engine, resolved, location || null, system), label };
@@ -199,7 +262,9 @@ export function mountObservatory(engine: EphemeraEngine) {
       : example ? 'Greenwich example. Edit birth details to use your own.'
         : natalPoints.size === 0 ? unavailableText(natalFacts[0]?.position.status === 'unavailable' ? natalFacts[0].position.reason : '')
           : `Birth time resolved with offset ${resolved.offset.value}.`;
-    byId('chart-notice').textContent = status.textContent;
+    applied = { demo: example, text: describeBirth(input, location || null, resolved.kind === 'resolved' ? resolved.offset.value : undefined) };
+    refreshContext();
+    if (!example) status.textContent = `Chart calculated for ${applied.text}. ${status.textContent}`;
     queueRedraw();
     return true;
   }
@@ -287,7 +352,7 @@ export function mountObservatory(engine: EphemeraEngine) {
     transitPoints = availablePositions(transitFacts);
     transitAspects = chartAspects(natalPoints, transitPoints);
     if (selectedAspect && !aspectForSelection()) selectedKey = '';
-    byId('selected-epoch').textContent = `${selectedDate} · ${selectedTime} ${instant.kind === 'resolved' && !instant.utc ? 'approx. UT1' : 'UTC'}`;
+    byId('selected-epoch').textContent = selectedLabel;
     const system = houses()?.effectiveSystem;
     byId('wheel-caption').textContent = natalPoints.size ? `${natal.time.input.date} natal${system ? ` · ${houseName(system)}` : ' · no houses'}`
       : 'Transit only · natal chart unavailable';
@@ -327,11 +392,14 @@ export function mountObservatory(engine: EphemeraEngine) {
   }, { signal });
   form.addEventListener('input', event => {
     birthEdited = true;
+    if (event.target === birthTime || event.target === unknown) setTimeError('');
     if (event.target === fold) return;
     birthTime.disabled = unknown.checked;
     foldArea.hidden = true;
     byId('birth-status').textContent = 'Birth details changed. Calculate to update the wheel.';
+    refreshContext();
   }, { signal });
+  birthDialog.addEventListener('close', refreshContext, { signal });
   document.querySelector('.data-switch')!.addEventListener('click', event => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-view]');
     if (!button || !natal) return;
@@ -353,8 +421,12 @@ export function mountObservatory(engine: EphemeraEngine) {
   }, { signal });
   byId<HTMLButtonElement>('calculate').disabled = false;
   calculateBirth(true);
-  bindTimeline((date, time) => {
-    if (date === selectedDate && time === selectedTime) return;
+  bindTimeline((date, time, label) => {
+    selectedLabel = label;
+    if (date === selectedDate && time === selectedTime) {
+      if (!frame) byId('selected-epoch').textContent = label;
+      return;
+    }
     exportStudio.invalidate();
     selectedDate = date;
     selectedTime = time;

@@ -106,8 +106,8 @@
       "properties": {
         "value": {"type": "string"},
         "seconds": {"type": "number"},
-        "source": {"enum": ["iana-runtime", "user-override"]},
-        "certainty": {"enum": ["runtime-zone-data", "historical-estimate", "user-supplied"]},
+        "source": {"enum": ["iana-runtime", "alberta-rule", "user-override"]},
+        "certainty": {"enum": ["runtime-zone-data", "official-rule", "historical-estimate", "user-supplied"]},
         "zone": {"oneOf": [{"type": "string"}, {"type": "null"}]},
         "transition": {"oneOf": [{"enum": ["unique", "fold", "gap"]}, {"type": "null"}]},
         "foldChoice": {"oneOf": [{"enum": ["earlier", "later"]}, {"type": "null"}]}

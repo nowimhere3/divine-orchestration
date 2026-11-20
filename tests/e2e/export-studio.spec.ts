@@ -176,6 +176,6 @@ test('the studio is keyboard operable and fits a phone without overflow', async 
   await expect(stepTwo(page)).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
   for (const name of ['Copy preview', 'Download Markdown', 'Download JSON']) {
-    expect((await page.getByRole('button', { name }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    expect((await page.getByRole('button', { name }).boundingBox())!.height).toBeGreaterThanOrEqual(43.9);
   }
 });

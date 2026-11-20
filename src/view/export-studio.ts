@@ -19,6 +19,8 @@ export const interpretationPrompt = [
 export function mountExportStudio(
   capture: () => { input: SnapshotInput; targets: readonly FixedNatalPoint[] } | null,
   signal: AbortSignal,
+  /** Returns a reason when the chart on screen is not the one the person has entered, so nothing is exported. */
+  guard: () => string = () => '',
 ) {
   const form = byId<HTMLFormElement>('export-form');
   const controls = byId<HTMLFieldSetElement>('export-controls');
@@ -100,6 +102,8 @@ export function mountExportStudio(
   form.addEventListener('submit', async event => {
     event.preventDefault();
     if (job) return;
+    const blocked = guard();
+    if (blocked) { status.textContent = blocked; return; }
     const captured = capture();
     if (!captured) { status.textContent = 'Wait for the current chart and Time Machine moment to finish updating.'; return; }
     invalidate();

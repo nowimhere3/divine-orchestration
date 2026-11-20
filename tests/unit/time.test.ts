@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { beforeAll, expect, test } from 'vitest';
 import { createEphemeraEngine } from '../../src/engine/ephemera';
-import { resolveBirthTime } from '../../src/time/resolve';
+import { normalizeBirthTime, resolveBirthTime } from '../../src/time/resolve';
 import type { BirthTimeInput, ResolvedInstant } from '../../src/time/resolve';
 
 let deltaT: (year: number) => number;
@@ -118,4 +118,23 @@ test('preserves a date without manufacturing a birth instant', () => {
   expect(resolveBirthTime(input, deltaT)).toEqual({
     kind: 'unknown-time', input, calendar: 'proleptic-gregorian',
   });
+});
+
+test.each([
+  ['2:00', '02:00'], ['9:30', '09:30'], ['02:00', '02:00'], ['14:00', '14:00'], [' 7:05:09 ', '07:05:09'], ['0:00', '00:00'],
+  ['2:00:30.5', '02:00:30.5'],
+])('normalizes the local birth time %s to %s', (text, expected) => {
+  expect(normalizeBirthTime(text)).toBe(expected);
+});
+
+test.each(['2:00 PM', '2pm', '2', '200', '2.00', '24:00', '2:60', '12:5', '', '1:2:3'])('does not reinterpret or accept %s', text => {
+  const result = resolveBirthTime({ date: '2024-01-01', time: normalizeBirthTime(text), timeZone: 'UTC' }, deltaT);
+  expect(result).toMatchObject({ kind: 'unresolved', reason: 'invalid-time' });
+});
+
+test('an unpadded hour resolves to the same instant as the padded one', () => {
+  const a = resolveBirthTime({ date: '2024-01-01', time: normalizeBirthTime('2:00'), timeZone: 'America/Edmonton' }, deltaT);
+  const b = resolveBirthTime({ date: '2024-01-01', time: '02:00', timeZone: 'America/Edmonton' }, deltaT);
+  expect(a).toEqual(b);
+  expect(a.kind).toBe('resolved');
 });
