@@ -10,7 +10,8 @@ import { AstroWheel, pointKey } from './astro-wheel';
 import { availablePositions, calculateNatal, calculatePositions, chartAspects, planetName } from './chart-data';
 import type { PositionMap } from './chart-data';
 import { aspectTable, houseName, houseTables, node, planetTable, unavailableText } from './readings';
-import { renderInspection } from './inspector';
+import { regionMembers, renderInspection } from './inspector';
+import { parseElementKey } from '../knowledge';
 import { mountChartTools } from './chart-tools';
 import { bindTimeline, byId } from './timeline';
 import { mountEventSearch } from './event-search';
@@ -60,7 +61,7 @@ export function mountObservatory(engine: EphemeraEngine) {
   const inspection = byId('inspection');
   const transitStatus = byId('transit-status');
   const wheel = new AstroWheel(byId('wheel'), select);
-  const tools = mountChartTools(wheel, { select, inspection }, signal);
+  const tools = mountChartTools(wheel, { select, inspection, explore }, signal);
   let natal: Chart;
   let natalFacts: readonly PlanetFact[] = [];
   let natalPoints: PositionMap = new Map();
@@ -69,6 +70,8 @@ export function mountObservatory(engine: EphemeraEngine) {
   let birthAspects = chartAspects(natalPoints);
   let transitAspects = birthAspects;
   let selectedKey = '';
+  /** Where a glossary concept was opened from, so the reader can step back. */
+  let returnTo: { key: string; label: string } | undefined;
   let reading: Readings = 'natal';
   let selectedDate = '';
   let selectedTime = '';
@@ -256,6 +259,7 @@ export function mountObservatory(engine: EphemeraEngine) {
     natalPoints = availablePositions(natalFacts);
     birthAspects = chartAspects(natalPoints);
     selectedKey = '';
+    returnTo = undefined;
     if (!example) eventSearch.reset('Natal chart updated. Search this chart for events.');
     exportStudio.invalidate();
     status.textContent = resolved.kind === 'unknown-time' ? unavailableText('unknown-birth-time')
@@ -274,6 +278,8 @@ export function mountObservatory(engine: EphemeraEngine) {
   }
 
   function relatedAspects() {
+    const element = parseElementKey(selectedKey);
+    if (element?.type === 'aspect') return [...birthAspects, ...transitAspects].filter(aspect => aspect.aspect === element.aspect);
     const [layer] = selectedKey.split('/');
     if (layer !== 'natal' && layer !== 'transit') return [];
     return [...birthAspects, ...transitAspects].filter(aspect => pointKey(aspect.from) === selectedKey || pointKey(aspect.to) === selectedKey);
@@ -285,6 +291,10 @@ export function mountObservatory(engine: EphemeraEngine) {
     const [layer, id] = selectedKey.split('/') as [string, PlanetId];
     renderInspection(inspection, {
       key: selectedKey, aspect: aspectForSelection(), houses: houses(), related: relatedAspects(),
+      natal: natalPoints, transit: transitPoints, aspects: [...birthAspects, ...transitAspects],
+      houseReason: natal?.houses.status === 'unavailable' ? natal.houses.reason : '',
+      requestedSystem: natal?.settings.requestedHouseSystem ?? null, orbs: createAspectRuleSet().orbsDeg,
+      moment: selectedLabel, birth: applied.text, demo: applied.demo, back: returnTo,
       position: layer === 'natal' ? natalPoints.get(id) : layer === 'transit' ? transitPoints.get(id) : undefined,
     });
     if (active) [...inspection.querySelectorAll<HTMLButtonElement>('[data-select-key]')]
@@ -295,15 +305,31 @@ export function mountObservatory(engine: EphemeraEngine) {
     for (const button of data.querySelectorAll<HTMLElement>('[data-inspect-key]')) {
       button.setAttribute('aria-pressed', String(button.dataset.inspectKey === selectedKey));
     }
-    wheel.select(selectedKey, aspectForSelection(), natalPoints, transitPoints, relatedAspects());
+    // A glossary concept is not on the wheel, so the wheel and the strip show no selection for it.
+    const onWheel = parseElementKey(selectedKey)?.type === 'concept' ? '' : selectedKey;
+    wheel.select(onWheel, aspectForSelection(), natalPoints, transitPoints, relatedAspects(),
+      regionMembers(onWheel, natalPoints, transitPoints, houses()));
     tools.refreshStrip(natalPoints, transitPoints);
-    tools.markSelection(selectedKey);
+    tools.markSelection(onWheel);
   }
 
   function select(key: string) {
+    if (parseElementKey(key)?.type === 'concept') {
+      if (parseElementKey(selectedKey)?.type !== 'concept') {
+        returnTo = { key: selectedKey, label: inspection.querySelector('.inspect-title')?.textContent || 'the chart guide' };
+      }
+    } else returnTo = undefined;
     selectedKey = key;
     showInspection();
     markSelection();
+  }
+
+  /** Opens the chart guide: the Inspector's start state, with full-size buttons for every sign, house, angle and aspect type. */
+  function explore() {
+    select('');
+    const smooth = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    inspection.scrollIntoView({ behavior: smooth, block: 'start' });
+    inspection.querySelector<HTMLElement>('.inspect-intro')?.focus({ preventScroll: true });
   }
 
   function showData() {
@@ -413,11 +439,11 @@ export function mountObservatory(engine: EphemeraEngine) {
     if (key) select(key);
   }, { signal });
   inspection.addEventListener('click', event => {
-    const key = (event.target as HTMLElement).closest<HTMLElement>('[data-select-key]')?.dataset.selectKey;
-    if (!key) return;
-    select(key);
+    const target = (event.target as HTMLElement).closest<HTMLElement>('[data-select-key]');
+    if (!target) return;
+    select(target.dataset.selectKey ?? '');
     // The clicked button was replaced, so move focus to the new heading to keep keyboard users oriented.
-    inspection.querySelector<HTMLElement>('.inspect-title')?.focus({ preventScroll: true });
+    inspection.querySelector<HTMLElement>('.inspect-title, .inspect-intro')?.focus({ preventScroll: true });
   }, { signal });
   byId<HTMLButtonElement>('calculate').disabled = false;
   calculateBirth(true);

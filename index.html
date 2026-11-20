@@ -25,6 +25,7 @@
         <a href="#events" data-nav="events"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 18h16M7 18V9M12 18V5M17 18v-6"/><circle cx="7" cy="7" r="1.3"/><circle cx="12" cy="3.2" r="1.3"/><circle cx="17" cy="10" r="1.3"/></svg><span>Events</span></a>
         <a href="#library" data-nav="library"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4.5h10a2 2 0 0 1 2 2V20H7a2 2 0 0 1-2-2zM17 8h2v12h-2"/><path d="M8.5 9h5M8.5 12.5h5"/></svg><span>Library</span></a>
         <a href="#export" data-nav="export"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V4M8 8l4-4 4 4M5 14v5h14v-5"/></svg><span>Export</span></a>
+        <a href="#learn" data-nav="learn"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6.5C6.5 5 9.5 5 12 6.5c2.5-1.5 5.5-1.5 8 0V19c-2.5-1.5-5.5-1.5-8 0-2.5-1.5-5.5-1.5-8 0z"/><path d="M12 6.5V19"/></svg><span>Learn</span></a>
       </nav>
       <span class="app-meta">Tropical zodiac</span>
     </header>
@@ -185,6 +186,11 @@
           <p id="profile-empty" class="empty-state" hidden>No saved profiles yet. Calculate a natal chart, give it a name and choose Save current chart.</p>
           <ul id="profile-cards" class="profile-cards" aria-label="Saved profiles"></ul>
         </section>
+      </section>
+
+      <section id="view-learn" class="view" data-page="learn" hidden>
+        <div class="view-intro"><p class="eyebrow">Glossary</p></div>
+        <div id="learn-root" class="panel learn"></div>
       </section>
 
       <section id="view-export" class="view" data-page="export" hidden>

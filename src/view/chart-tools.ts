@@ -10,6 +10,8 @@ import { byId } from './timeline';
 
 export interface ChartToolsHooks {
   select(key: string): void;
+  /** Opens the chart guide in the Inspector (signs, houses, angles, aspect types and ideas). */
+  explore(): void;
   /** The Inspector container, whose title names the current selection. */
   inspection: HTMLElement;
 }
@@ -57,6 +59,15 @@ export function mountChartTools(wheel: AstroWheel, hooks: ChartToolsHooks, signa
       const row = node('div');
       row.className = `strip-row strip-${layer}`;
       row.append(Object.assign(node('span', layer === 'natal' ? 'Natal' : 'Transit'), { className: 'strip-label' }));
+      if (layer === 'natal') {
+        // Signs, houses, angles and aspect lines are too small to tap reliably; this opens full-size buttons for them.
+        const guide = node('button', 'Guide');
+        guide.type = 'button';
+        guide.className = 'strip-explore';
+        guide.setAttribute('aria-label', 'Chart guide: signs, houses, angles and aspects');
+        guide.setAttribute('aria-controls', 'inspection');
+        row.append(guide);
+      }
       for (const key of keys.filter(candidate => candidate.startsWith(`${layer}/`))) {
         const id = key.split('/')[1] as PlanetId;
         const button = node('button');
@@ -75,7 +86,9 @@ export function mountChartTools(wheel: AstroWheel, hooks: ChartToolsHooks, signa
     strip.replaceChildren(...rows.filter(row => row.querySelector('button')));
   }
   strip.addEventListener('click', event => {
-    const key = (event.target as HTMLElement).closest<HTMLElement>('[data-strip-key]')?.dataset.stripKey;
+    const target = event.target as HTMLElement;
+    if (target.closest('.strip-explore')) { hooks.explore(); return; }
+    const key = target.closest<HTMLElement>('[data-strip-key]')?.dataset.stripKey;
     if (key) hooks.select(key);
   }, { signal });
 

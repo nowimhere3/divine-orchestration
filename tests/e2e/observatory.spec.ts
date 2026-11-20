@@ -11,7 +11,7 @@ test('renders the real natal and transit charts with accessible angle and aspect
   await expect(page.locator('#wheel [data-layer="transit"]')).toHaveCount(10);
   await expect(page.locator('.wheel-angle')).toHaveText(['ASC', 'MC']);
   await expect(page.locator('.wheel-aspects line').first()).toBeVisible();
-  await expect(page.getByLabel('House system')).toHaveValue('WholeSign');
+  await expect(page.locator('#house-system')).toHaveValue('WholeSign');
   const sun = page.getByRole('button', { name: 'Natal Sun', exact: true });
   await sun.focus();
   await page.keyboard.press('Enter');
@@ -87,7 +87,7 @@ test('shows the engine’s polar Placidus fallback and allows a planets-only cha
   await openBirth(page);
   await page.getByLabel('Latitude', { exact: true }).fill('69.6492');
   await page.getByLabel('Longitude', { exact: true }).fill('18.9553');
-  await page.getByLabel('House system').selectOption('Placidus');
+  await page.locator('#house-system').selectOption('Placidus');
   await page.getByRole('button', { name: 'Calculate natal chart' }).click();
   await expect(page.locator('#wheel-caption')).toContainText('Porphyry');
   await expect(page.locator('#calculation-notes')).toContainText('Placidus is undefined');

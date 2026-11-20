@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { goTo, openApp, openBirth } from './helpers';
 
-const views = ['chart', 'events', 'library', 'export'] as const;
+const views = ['chart', 'events', 'library', 'export', 'learn'] as const;
 
 test('shows one view at a time and marks the current navigation link', async ({ page }) => {
   await openApp(page);
   const nav = page.getByRole('navigation', { name: 'Primary' });
-  await expect(nav.getByRole('link')).toHaveText(['Chart', 'Events', 'Library', 'Export']);
+  await expect(nav.getByRole('link')).toHaveText(['Chart', 'Events', 'Library', 'Export', 'Learn']);
   for (const view of views) {
     await goTo(page, view);
     for (const other of views) {
@@ -15,7 +15,7 @@ test('shows one view at a time and marks the current navigation link', async ({ 
     await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
     await expect(nav.locator(`[data-nav="${view}"]`)).toHaveAttribute('aria-current', 'page');
   }
-  await expect(page).toHaveTitle('Export · Divine Orchestration');
+  await expect(page).toHaveTitle('Learn · Divine Orchestration');
   await goTo(page, 'chart');
   await expect(page).toHaveTitle('Divine Orchestration');
 });

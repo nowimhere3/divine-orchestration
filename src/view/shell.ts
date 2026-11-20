@@ -1,15 +1,18 @@
+import { parseLearnRoute } from './learn-model';
+import type { LearnRoute } from './learn-model';
+import type { LearnShown } from './learn';
 import { byId } from './timeline';
 
-export const VIEWS = ['chart', 'events', 'library', 'export'] as const;
+export const VIEWS = ['chart', 'events', 'library', 'export', 'learn'] as const;
 export type ViewName = (typeof VIEWS)[number];
 
 const TITLES: Record<ViewName, string> = {
-  chart: 'Chart', events: 'Events', library: 'Library', export: 'Export',
+  chart: 'Chart', events: 'Events', library: 'Library', export: 'Export', learn: 'Learn',
 };
 
 /** Maps a location hash to a view; anything unrecognised falls back to the chart. */
 export function viewFromHash(hash: string): ViewName {
-  const name = hash.replace(/^#\/?/, '').split(/[?&]/)[0].toLowerCase();
+  const name = hash.replace(/^#\/?/, '').split(/[?&]/)[0].split('/')[0].toLowerCase();
   return (VIEWS as readonly string[]).includes(name) ? name as ViewName : 'chart';
 }
 
@@ -18,12 +21,17 @@ export function viewFromHash(hash: string): ViewName {
  * hidden, so form values, the chart, the Time Machine, search results and exports
  * keep their state when the user moves between views. Works on any static host.
  */
-export function mountShell(signal: AbortSignal) {
+export function mountShell(signal: AbortSignal, renderLearn?: (route: LearnRoute, fromChart: boolean) => LearnShown) {
   const panels = new Map(VIEWS.map(name => [name, document.querySelector<HTMLElement>(`[data-page="${name}"].view`)!]));
   const links = new Map(VIEWS.map(name => [name, document.querySelector<HTMLAnchorElement>(`[data-nav="${name}"]`)!]));
   let current: ViewName | null = null;
+  // True while a Learn visit began on the chart, so Learn can offer a way back to it.
+  let learnFromChart = false;
 
   function show(name: ViewName, moveFocus: boolean) {
+    if (name === 'learn' && current !== 'learn') learnFromChart = current === 'chart';
+    // Learn renders first, so the title and focus below describe what is actually on screen.
+    const learn = name === 'learn' && renderLearn ? renderLearn(parseLearnRoute(location.hash) ?? { type: 'index' }, learnFromChart) : null;
     for (const view of VIEWS) {
       panels.get(view)!.hidden = view !== name;
       const link = links.get(view)!;
@@ -31,10 +39,12 @@ export function mountShell(signal: AbortSignal) {
       else link.removeAttribute('aria-current');
     }
     document.body.dataset.view = name;
-    document.title = name === 'chart' ? 'Divine Orchestration' : `${TITLES[name]} · Divine Orchestration`;
-    if (moveFocus && current !== name) {
+    document.title = learn ? `${learn.title} · Divine Orchestration`
+      : name === 'chart' ? 'Divine Orchestration' : `${TITLES[name]} · Divine Orchestration`;
+    // Moving between Learn pages is a route change too, even though the view stays the same.
+    if (moveFocus && (current !== name || name === 'learn')) {
       window.scrollTo({ top: 0 });
-      panels.get(name)!.querySelector<HTMLElement>('h2[tabindex="-1"]')?.focus({ preventScroll: true });
+      (learn?.heading ?? panels.get(name)!.querySelector<HTMLElement>('h2[tabindex="-1"]'))?.focus({ preventScroll: true });
     }
     current = name;
   }

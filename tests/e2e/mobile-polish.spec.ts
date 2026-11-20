@@ -195,7 +195,9 @@ test.describe('touch alternatives on a phone', () => {
     const strip = page.getByRole('group', { name: 'Choose a planet' });
     await expect(strip).toBeVisible();
     const buttons = strip.getByRole('button');
-    expect(await buttons.count()).toBe(20);
+    // Twenty planets plus the chart guide button (the route to signs, houses, angles and aspects).
+    expect(await buttons.count()).toBe(21);
+    await expect(strip.locator('[data-strip-key]')).toHaveCount(20);
     for (const box of await buttons.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().toJSON()))) {
       expect(box.width).toBeGreaterThanOrEqual(44);
       expect(box.height).toBeGreaterThanOrEqual(44);
@@ -305,7 +307,7 @@ test.describe('layout polish', () => {
       await page.setViewportSize({ width, height: width < 700 ? 800 : 900 });
       await openApp(page);
       await page.getByRole('button', { name: width < 700 ? 'Select Natal Sun' : 'Natal Sun', exact: true }).click();
-      for (const view of ['chart', 'events', 'library', 'export'] as View[]) {
+      for (const view of ['chart', 'events', 'library', 'export', 'learn'] as View[]) {
         await goTo(page, view);
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
         expect(overflow, `${view} at ${width}px`).toBeLessThanOrEqual(0);

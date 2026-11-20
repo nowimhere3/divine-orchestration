@@ -15,7 +15,7 @@ test('persists an unknown-time profile, renames it, restores a backup in a fresh
   await openBirth(page);
   await page.getByLabel('Birth date', { exact: true }).fill('1980-04-15');
   await page.getByLabel('Birth time unknown').check();
-  await page.getByLabel('House system').selectOption('Placidus');
+  await page.locator('#house-system').selectOption('Placidus');
   await page.getByRole('button', { name: 'Calculate natal chart' }).click();
   await goTo(page, 'library');
   await expect(page.getByRole('button', { name: 'Save current chart' })).toBeEnabled();
@@ -27,7 +27,7 @@ test('persists an unknown-time profile, renames it, restores a backup in a fresh
   await expect(page.locator('#wheel-caption')).toContainText('Transit only');
   await expect(page.getByLabel('Birth date', { exact: true })).toHaveValue('1980-04-15');
   await expect(page.getByLabel('Birth time unknown')).toBeChecked();
-  await expect(page.getByLabel('House system')).toHaveValue('Placidus');
+  await expect(page.locator('#house-system')).toHaveValue('Placidus');
   await page.getByRole('button', { name: 'Rename Date only', exact: true }).click();
   await page.getByLabel('New name for Date only').fill('Renamed');
   await page.getByRole('button', { name: 'Save name', exact: true }).click();

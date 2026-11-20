@@ -1,8 +1,8 @@
 import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-export type View = 'chart' | 'events' | 'library' | 'export';
-const label: Record<View, string> = { chart: 'Chart', events: 'Events', library: 'Library', export: 'Export' };
+export type View = 'chart' | 'events' | 'library' | 'export' | 'learn';
+const label: Record<View, string> = { chart: 'Chart', events: 'Events', library: 'Library', export: 'Export', learn: 'Learn' };
 
 /** Opens the app, waits for the chart to finish loading, then optionally moves to another view. */
 export async function openApp(page: Page, view: View = 'chart') {
