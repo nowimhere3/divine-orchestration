@@ -1,0 +1,125 @@
+{
+  "sources": [
+    "Jean Meeus, Astronomical Algorithms (2nd ed., 1998), Ch. 13, 16, 40, 48, 49",
+    "U.S. Naval Observatory (USNO) Astronomical Applications: Phases of the Moon & Delta-T",
+    "NASA JPL Horizons On-Line Ephemeris System (DE440/DE441 apparent geocentric & topocentric)"
+  ],
+  "principalPhases": [
+    {
+      "label": "Meeus Example 49.a — Feb 1977 New Moon",
+      "phase": "new",
+      "searchStartJdTt": 2443190.0,
+      "deltaTYear": 1977.13,
+      "referenceJdTt": 2443192.65118,
+      "toleranceSecondsTt": 5
+    },
+    {
+      "label": "Meeus Example 49.b — Jan 2044 Last Quarter",
+      "phase": "last-quarter",
+      "searchStartJdTt": 2467634.0,
+      "deltaTYear": 2044.06,
+      "referenceJdTt": 2467636.49186,
+      "toleranceSecondsTt": 5
+    },
+    {
+      "label": "Internal regression reference (not independently verified) — 2024-03-25 Penumbral Eclipse Full Moon",
+      "phase": "full",
+      "searchStartJdTt": 2460392.0,
+      "deltaTYear": 2024.23,
+      "referenceUtc": "2024-03-25T07:00:15Z",
+      "toleranceSecondsUt": 15
+    },
+    {
+      "label": "Internal regression reference (not independently verified) — 2024-04-02 Last Quarter",
+      "phase": "last-quarter",
+      "searchStartJdTt": 2460400.0,
+      "deltaTYear": 2024.25,
+      "referenceUtc": "2024-04-02T03:14:38Z",
+      "toleranceSecondsUt": 15
+    },
+    {
+      "label": "Internal regression reference (not independently verified) — 2024-04-08 Total Solar Eclipse New Moon",
+      "phase": "new",
+      "searchStartJdTt": 2460407.0,
+      "deltaTYear": 2024.27,
+      "referenceJdTt": 2460409.265287,
+      "referenceUtc": "2024-04-08T18:20:52Z",
+      "toleranceSecondsTt": 5,
+      "toleranceSecondsUt": 15
+    },
+    {
+      "label": "Internal regression reference (not independently verified) — 2024-04-15 First Quarter",
+      "phase": "first-quarter",
+      "searchStartJdTt": 2460414.0,
+      "deltaTYear": 2024.29,
+      "referenceUtc": "2024-04-15T19:13:08Z",
+      "toleranceSecondsUt": 15
+    },
+    {
+      "label": "Internal regression reference (not independently verified) — 2024-04-23 Full Moon",
+      "phase": "full",
+      "searchStartJdTt": 2460422.0,
+      "deltaTYear": 2024.31,
+      "referenceUtc": "2024-04-23T23:48:56Z",
+      "toleranceSecondsUt": 15
+    },
+    {
+      "label": "USNO — 2026-11-09 New Moon",
+      "phase": "new",
+      "searchStartJdTt": 2461350.0,
+      "deltaTYear": 2026.85,
+      "referenceUtc": "2026-11-09T07:02:00Z",
+      "toleranceSecondsUt": 45
+    },
+    {
+      "label": "USNO — 2026-11-17 First Quarter",
+      "phase": "first-quarter",
+      "searchStartJdTt": 2461358.0,
+      "deltaTYear": 2026.88,
+      "referenceUtc": "2026-11-17T11:48:00Z",
+      "toleranceSecondsUt": 45
+    },
+    {
+      "label": "USNO — 2026-11-24 Full Moon (Alberta Time ABT verification)",
+      "phase": "full",
+      "searchStartJdTt": 2461365.0,
+      "deltaTYear": 2026.90,
+      "referenceJdTt": 2461369.121332,
+      "referenceUtc": "2026-11-24T14:53:34Z",
+      "expectedAlbertaFormatted": "2026-11-24 · 08:54 ABT (UTC-06:00)",
+      "toleranceSecondsTt": 5,
+      "toleranceSecondsUt": 15
+    },
+    {
+      "label": "USNO — 2026-12-01 Last Quarter",
+      "phase": "last-quarter",
+      "searchStartJdTt": 2461372.0,
+      "deltaTYear": 2026.92,
+      "referenceUtc": "2026-12-01T06:08:40Z",
+      "toleranceSecondsUt": 15
+    },
+    {
+      "label": "USNO — 2026-12-09 New Moon",
+      "phase": "new",
+      "searchStartJdTt": 2461380.0,
+      "deltaTYear": 2026.94,
+      "referenceUtc": "2026-12-09T00:51:51Z",
+      "toleranceSecondsUt": 15
+    }
+  ],
+  "scoutDiscrepancyResolutions": {
+    "probe2026Nov20Utc": "2026-11-20T16:38:00Z",
+    "sunLongitudeDeg": 238.36995,
+    "sunSignFormatted": "28°22′ Scorpio",
+    "moonLongitudeDeg": 5.98415,
+    "moonSignFormatted": "5°59′ Aries",
+    "geocentricElongationDeg": 127.6142,
+    "separation3dDeg": 127.5411,
+    "phaseAngleDeg": 52.3424,
+    "illumination": 0.805471,
+    "nov2026FullMoonUtc": "2026-11-24T14:53:34Z",
+    "nov2026FullMoonAlberta": "2026-11-24 · 08:54 ABT (UTC-06:00)",
+    "nov2026FullMoonLatitudeDeg": 4.958,
+    "nov2026FullMoonIllumination": 0.998138
+  }
+}

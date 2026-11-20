@@ -7,7 +7,7 @@ const cards = (page: Page) => page.locator('#learn-root .learn-card');
 const heading = (page: Page) => page.locator('#view-learn h2:visible');
 
 test.describe('Learn index', () => {
-  test('is a fifth tab with every one of the 47 entries, grouped by category', async ({ page }) => {
+  test('is a fifth tab with every one of the 49 entries, grouped by category', async ({ page }) => {
     await openApp(page);
     const nav = page.getByRole('navigation', { name: 'Primary' });
     await expect(nav.getByRole('link')).toHaveText(['Chart', 'Events', 'Library', 'Export', 'Learn']);
@@ -15,9 +15,9 @@ test.describe('Learn index', () => {
     await expect(page).toHaveTitle('Learn · Divine Orchestration');
     await expect(nav.locator('[data-nav="learn"]')).toHaveAttribute('aria-current', 'page');
     await expect(heading(page)).toBeFocused();
-    await expect(cards(page)).toHaveCount(47);
-    await expect(page.locator('.learn-count')).toHaveText('47 entries');
-    for (const group of ['Planets (10)', 'Signs (12)', 'Houses (12)', 'Aspects (5)', 'Angles (2)', 'Ideas (6)']) {
+    await expect(cards(page)).toHaveCount(49);
+    await expect(page.locator('.learn-count')).toHaveText('49 entries');
+    for (const group of ['Planets (10)', 'Signs (12)', 'Houses (12)', 'Aspects (5)', 'Angles (2)', 'Ideas (8)']) {
       await expect(page.getByRole('heading', { name: group })).toBeVisible();
     }
   });
@@ -42,7 +42,7 @@ test.describe('Learn index', () => {
     await page.getByRole('button', { name: 'Clear search and category' }).click();
     await expect(search).toHaveValue('');
     await expect(search).toBeFocused();
-    await expect(cards(page)).toHaveCount(47);
+    await expect(cards(page)).toHaveCount(49);
   });
 
   test('keeps the search for the session while an entry is open', async ({ page }) => {
@@ -80,7 +80,7 @@ test.describe('Learn entries and routing', () => {
   test('every entry id opens a page with the right heading', async ({ page }) => {
     await openApp(page);
     const ids = await page.evaluate(() => [...document.querySelectorAll('#learn-root .learn-card')].map(a => a.getAttribute('href')!));
-    expect(ids).toHaveLength(47);
+    expect(ids).toHaveLength(49);
     for (const href of ids) {
       await page.evaluate(h => { location.hash = h; }, href);
       await expect(page.locator('.learn-detail')).toBeVisible();
@@ -123,7 +123,7 @@ test.describe('Learn entries and routing', () => {
     await page.goto('/#learn/body/vulcan');
     await expect(page.locator('#view-learn')).toBeVisible();
     await expect(page.locator('.learn-notice')).toContainText('body/vulcan');
-    await expect(cards(page)).toHaveCount(47);
+    await expect(cards(page)).toHaveCount(49);
     await expect(page).toHaveTitle('Learn · Divine Orchestration');
     await page.goto('/#nonsense');
     await expect(page.locator('#view-chart')).toBeVisible();

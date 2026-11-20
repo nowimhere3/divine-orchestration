@@ -36,7 +36,8 @@ export const BODIES: Readonly<Record<string, Entry>> = {
     ],
     reading: 'Read the Moon’s sign for the emotional tone the tradition associates with it, and its house for where those needs are said to be most felt. Because it moves quickly, an uncertain birth time matters most here.',
     reflection: 'What helps me feel settled?',
-    sources: lights,
+    sources: [...lights, 'usno-phases', 'meeus-algorithms'],
+    see: ['concept/moon-phases', 'concept/lunar-parallax'],
   },
   mercury: {
     id: 'body/mercury', kind: 'body', name: 'Mercury', symbol: '☿', tagline: 'Thinking and communication',

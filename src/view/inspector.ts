@@ -2,6 +2,8 @@ import type { AspectFact } from '../domain/aspects';
 import type { HouseFacts, PlanetId, PlanetPosition } from '../domain/chart';
 import { aspectEntry, bodyEntry, conceptEntry, entryById, entryForRef, houseEntry, parseElementKey, signEntry, sourcesFor } from '../knowledge';
 import type { ElementRef, Entry } from '../knowledge';
+import { formatLunarTimestamp } from '../lunar';
+import type { DateOnlyMoonSummary, LunarCycleInfo, MoonSkyState, MoonState } from '../lunar';
 import { natalHouse, planetName, signPosition, titleCase, wrapDegrees } from './chart-data';
 import type { PositionMap } from './chart-data';
 import { aspectLabel, degrees, houseName, node, planetInspection, refLabel, unavailableText } from './readings';
@@ -20,6 +22,21 @@ export const tone = { conjunction: 'blend', sextile: 'support', trine: 'support'
 export const toneText = { blend: 'Blending', support: 'Supportive', tense: 'Tense' } as const;
 const aspectAngles = { conjunction: 0, sextile: 60, square: 90, trine: 120, opposition: 180 } as const;
 const aspectOrder = ['conjunction', 'sextile', 'square', 'trine', 'opposition'] as const;
+
+export interface InspectorLunarLayer {
+  readonly state: MoonState | null;
+  readonly cycle: LunarCycleInfo | null;
+  readonly sky: MoonSkyState | null;
+  readonly observerLabel: string;
+  readonly missingObserverReason: string | null;
+  readonly timeZone: string;
+  readonly dateOnlySummary?: DateOnlyMoonSummary | null;
+}
+
+export interface InspectorLunarModel {
+  readonly natal: InspectorLunarLayer;
+  readonly transit: InspectorLunarLayer;
+}
 
 export interface InspectorModel {
   key: string;
@@ -43,6 +60,7 @@ export interface InspectorModel {
   demo: boolean;
   /** Set when a glossary concept was opened from another selection. */
   back?: { key: string; label: string };
+  lunar?: InspectorLunarModel;
 }
 
 export const glyph = (id: PlanetId, layer: string) => {
@@ -283,6 +301,82 @@ const houseSystemLine = (model: InspectorModel, houses: HouseFacts) => {
 const natalContext = (model: InspectorModel) => `Natal chart, fixed at the birth moment: ${model.birth}.`;
 const momentContext = (model: InspectorModel) => `Transits at the Time Machine moment: ${model.moment}.`;
 
+function signedDegrees(deg: number, digits = 2) {
+  return `${deg >= 0 ? '+' : '−'}${Math.abs(deg).toFixed(digits)}°`;
+}
+
+function renderLunarInspectionBlock(layer: 'natal' | 'transit', info: InspectorLunarLayer | undefined): HTMLElement[] {
+  if (!info || !info.state) return [];
+  const s = info.state;
+  const c = info.cycle;
+  const sky = info.sky;
+  const zone = info.timeZone || 'UTC';
+
+  const section = node('section');
+  section.className = 'inspect-lunar';
+  section.setAttribute('aria-label', 'Lunar Observatory');
+  section.append(node('h4', layer === 'natal' ? 'Lunar Observatory (birth Moon)' : 'Lunar Observatory (selected moment)'));
+
+  const rows: string[][] = [
+    ['Lunar phase', `${s.phaseLabel} (${s.waxingLabel})`],
+    ['Illumination', `${s.illuminationPercent.toFixed(1)}% (phase angle ${s.phaseAngleDeg.toFixed(2)}°)`],
+    ['Geocentric elongation', `${s.elongationDeg.toFixed(2)}°`],
+    ['Geocentric tropical Moon', `${s.formattedPosition} (${degrees(s.moonLongitudeDeg)})`],
+  ];
+
+  if (c) {
+    if (c.ageDays !== null && c.synodicLengthDays !== null) {
+      rows.push(['Moon age & cycle', `${c.ageDays.toFixed(1)}d old · ${(c.cycleProgress * 100).toFixed(1)}% of ${c.synodicLengthDays.toFixed(2)}d cycle`]);
+    } else if (c.ageDays !== null) {
+      rows.push(['Moon age', `${c.ageDays.toFixed(1)}d since New Moon`]);
+    }
+    if (c.previous) {
+      rows.push(['Previous phase', `${c.previous.label} · ${formatLunarTimestamp(c.previous.epochMs, zone)}`]);
+    }
+    if (c.next) {
+      rows.push(['Next phase', `${c.next.label} · ${formatLunarTimestamp(c.next.epochMs, zone)}`]);
+    }
+  }
+
+  if (sky) {
+    rows.push(['Observer location', info.observerLabel]);
+    rows.push([
+      'Topocentric Moon (local)',
+      `${sky.topocentricFormatted} (${degrees(sky.topocentricLongitudeDeg)} · parallax ${signedDegrees(sky.parallaxDeltaLonDeg, 2)})`,
+    ]);
+    rows.push(['Chart frame note', 'Chart wheel, aspects and exports use geocentric position']);
+    rows.push([
+      'Local altitude & azimuth',
+      `${signedDegrees(sky.apparentAltitudeDeg, 1)} apparent (${signedDegrees(sky.geometricAltitudeDeg, 1)} geometric) · Az ${sky.azimuthDeg.toFixed(1)}°`,
+    ]);
+    rows.push(['Horizon visibility', `${sky.visibilityLabel} (standard atmosphere)`]);
+    if (sky.localDateTransit) {
+      const t = sky.localDateTransit;
+      rows.push([
+        'Upper meridian passage',
+        `${formatLunarTimestamp(t.epochMs, zone)} · Culmination ${signedDegrees(t.culminationApparentAltitudeDeg, 1)}`,
+      ]);
+    } else if (sky.nextTransit || sky.nearestTransit) {
+      const t = (sky.nextTransit ?? sky.nearestTransit)!;
+      rows.push([
+        'Upper meridian passage',
+        `None on this local date · Next: ${formatLunarTimestamp(t.epochMs, zone)} (${signedDegrees(t.culminationApparentAltitudeDeg, 1)})`,
+      ]);
+    }
+  }
+
+  section.append(details(rows));
+
+  if (sky?.signDiffers && sky.signDifferenceNote) {
+    const signNote = Object.assign(node('p', sky.signDifferenceNote), { className: 'lunar-sign-diff' });
+    section.append(signNote);
+  } else if (!sky && info.missingObserverReason) {
+    section.append(quiet(info.missingObserverReason));
+  }
+
+  return [section];
+}
+
 function planetView(model: InspectorModel, layer: 'natal' | 'transit', id: PlanetId, position: PlanetPosition) {
   const sign = Math.floor(position.longitudeDeg / 30) % 12;
   const signMark = node('span', `${signGlyphs[sign]}︎`);
@@ -299,9 +393,16 @@ function planetView(model: InspectorModel, layer: 'natal' | 'transit', id: Plane
   explore.append(node('span', 'Explore'));
   explore.append(jump([`${signEntry(sign)?.name}`], `sign/${sign}`, `Open the sign ${signEntry(sign)?.name}`, 'concept-link'));
   if (house) explore.append(jump([`House ${house}`], `house/${house}`, `Open house ${house}`, 'concept-link'));
+  if (id === 'moon') {
+    explore.append(jump(['Moon phases'], 'concept/moon-phases', 'Learn about Moon phases', 'concept-link'));
+    explore.append(jump(['Lunar parallax & local sky'], 'concept/lunar-parallax', 'Learn about Lunar parallax & local sky', 'concept-link'));
+  }
+  const lunarBlocks = id === 'moon'
+    ? renderLunarInspectionBlock(layer, layer === 'natal' ? model.lunar?.natal : model.lunar?.transit)
+    : [];
   const related = relationList('Aspects', model.related, fact => `to ${refLabel(pointKey(fact.from) === model.key ? fact.to : fact.from)}`, 'No major aspects within orb.');
   return [head, sectionNav(), ...(entry ? [meaning(entry)] : []),
-    facts(layer === 'natal' ? natalContext(model) : `${momentContext(model)} House numbers are the natal houses.`, [motion, details(rows), explore, related])];
+    facts(layer === 'natal' ? natalContext(model) : `${momentContext(model)} House numbers are the natal houses.`, [motion, details(rows), ...lunarBlocks, explore, related])];
 }
 
 function aspectView(model: InspectorModel, fact: AspectFact) {
@@ -439,6 +540,47 @@ function conceptFacts(model: InspectorModel, id: string) {
       content.push(details([['Time Machine moment', model.moment], ['Transit-to-natal aspects', String(crossing)]]));
       return facts('What the outer gold ring shows now.', content);
     }
+    case 'moon-phases': {
+      const tState = model.lunar?.transit.state;
+      const tCycle = model.lunar?.transit.cycle;
+      const nState = model.lunar?.natal.state;
+      const rows: string[][] = [];
+      if (tState) {
+        rows.push(['Transit Moon phase', `${tState.phaseLabel} (${tState.waxingLabel})`]);
+        rows.push(['Transit illumination', `${tState.illuminationPercent.toFixed(1)}% (${tState.elongationDeg.toFixed(1)}° elongation)`]);
+        rows.push(['Transit Moon sign', `${tState.formattedPosition} (geocentric)`]);
+      }
+      if (tCycle?.next) {
+        rows.push(['Next principal phase', `${tCycle.next.label} · ${formatLunarTimestamp(tCycle.next.epochMs, model.lunar?.transit.timeZone ?? 'UTC')}`]);
+      }
+      if (nState) {
+        rows.push(['Natal Moon phase', `${nState.phaseLabel} · ${nState.illuminationPercent.toFixed(1)}% · ${nState.formattedPosition}`]);
+      } else if (model.lunar?.natal.dateOnlySummary?.status === 'ok') {
+        rows.push(['Natal date Moon', `${model.lunar.natal.dateOnlySummary.phaseSummary} · ${model.lunar.natal.dateOnlySummary.signSummary}`]);
+      }
+      content.push(rows.length ? details(rows) : quiet('Lunar phase figures are unavailable for this date.'));
+      return facts(`${momentContext(model)} ${natalContext(model)}`, content);
+    }
+    case 'lunar-parallax': {
+      const tSky = model.lunar?.transit.sky;
+      const tState = model.lunar?.transit.state;
+      const nSky = model.lunar?.natal.sky;
+      const rows: string[][] = [];
+      if (tState) {
+        rows.push(['Transit geocentric Moon', `${tState.formattedPosition} (${degrees(tState.moonLongitudeDeg)})`]);
+      }
+      if (tSky) {
+        rows.push(['Transit observer', model.lunar?.transit.observerLabel ?? 'Active observer']);
+        rows.push(['Transit topocentric Moon', `${tSky.topocentricFormatted} (${degrees(tSky.topocentricLongitudeDeg)} · ${signedDegrees(tSky.parallaxDeltaLonDeg, 2)})`]);
+        rows.push(['Transit altitude', `${signedDegrees(tSky.apparentAltitudeDeg, 1)} (${tSky.visibilityLabel})`]);
+      }
+      if (nSky) {
+        rows.push(['Natal topocentric Moon', `${nSky.topocentricFormatted} (${signedDegrees(nSky.parallaxDeltaLonDeg, 2)} · ${nSky.visibilityLabel})`]);
+      }
+      content.push(rows.length ? details(rows) : quiet('Select an observer location in the Lunar Observatory to compare geocentric and topocentric positions.'));
+      if (tSky?.signDiffers && tSky.signDifferenceNote) content.push(quiet(tSky.signDifferenceNote));
+      return facts('Geocentric chart frame versus local topocentric observer coordinates.', content);
+    }
     default:
       content.push(model.houses
         ? details([['Requested', model.requestedSystem ? houseName(model.requestedSystem) : '—'], ['In use', houseName(model.houses.effectiveSystem)],
@@ -476,7 +618,7 @@ function indexView(model: InspectorModel) {
   const houses = Array.from({ length: 12 }, (_, index) => button(String(index + 1), `house/${index + 1}`, `House ${index + 1}, ${houseEntry(index + 1)!.tagline}`));
   const angles = [button('Ascendant', 'angle/asc', 'Ascendant (ASC)'), button('Midheaven', 'angle/mc', 'Midheaven (MC)')];
   const aspects = aspectOrder.map(aspect => button(aspectEntry(aspect)!.name, `aspect/${aspect}`, `${aspectEntry(aspect)!.name} aspects`, aspectSymbols[aspect]));
-  const concepts = ['retrograde', 'orb', 'degrees', 'natal-chart', 'transits', 'house-systems']
+  const concepts = ['retrograde', 'orb', 'degrees', 'natal-chart', 'transits', 'house-systems', 'moon-phases', 'lunar-parallax']
     .map(id => button(conceptEntry(id)!.name, `concept/${id}`, `About ${conceptEntry(id)!.name}`));
   const unavailable = model.houses ? undefined : `${unavailableText(model.houseReason)} Houses and angles are not drawn, but their meanings are still here.`;
   return [intro, group('Zodiac signs', signs), group('Houses', houses, unavailable), group('Angles', angles), group('Aspect types', aspects), group('Ideas', concepts)];

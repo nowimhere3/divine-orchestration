@@ -12,7 +12,8 @@ export type EntryKind = 'body' | 'sign' | 'house' | 'aspect' | 'angle' | 'concep
 export type SourceId =
   | 'nasa-planets' | 'wiki-planets-astrology' | 'wiki-sign' | 'wiki-tropical' | 'wiki-house' | 'wiki-aspect'
   | 'wiki-retrograde' | 'wiki-ecliptic' | 'wiki-ascendant' | 'wiki-midheaven' | 'wiki-horoscope'
-  | 'wiki-triplicity' | 'wiki-symbols' | 'ptolemy' | 'lilly' | 'britannica-astrology' | 'iau-2006';
+  | 'wiki-triplicity' | 'wiki-symbols' | 'ptolemy' | 'lilly' | 'britannica-astrology' | 'iau-2006'
+  | 'usno-phases' | 'jpl-horizons' | 'meeus-algorithms';
 
 export interface Source {
   readonly id: SourceId;

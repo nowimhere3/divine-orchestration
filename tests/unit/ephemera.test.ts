@@ -191,4 +191,39 @@ describe('native event searches', () => {
       warnings: ['near-coverage-edge', 'search-clamped-to-coverage'],
     });
   });
+
+  test('exposes phenomena, topocentric, siderealTime and equatorial with coverage and input validation', () => {
+    const phen = engine.phenomena('Moon', j2000);
+    if (phen.status !== 'ok') throw new Error(phen.reason);
+    expect(phen.value.illumination).toBeGreaterThan(0);
+    expect(phen.value.illumination).toBeLessThan(1);
+    expect(phen.value.diameterDeg).toBeGreaterThan(0.45);
+    expect(phen.value.diameterDeg).toBeLessThan(0.6);
+
+    const topo = engine.topocentric('Moon', j2000, { latitudeDeg: 53.5461, longitudeDeg: -113.4938 });
+    const geo = engine.position('Moon', j2000);
+    if (topo.status !== 'ok' || geo.status !== 'ok') throw new Error('Expected Moon positions');
+    expect(Math.abs(angleError(topo.value.longitude, geo.value.longitude))).toBeGreaterThan(0.05);
+    expect(Math.abs(angleError(topo.value.longitude, geo.value.longitude))).toBeLessThan(1.1);
+
+    const st = engine.siderealTime(j2000);
+    if (st.status !== 'ok') throw new Error(st.reason);
+    // At j2000 (12:00:00 TT = 11:58:56.17 UT1), GAST is ~0.267° before 12:00:00 UT1 (280.46°).
+    expect(st.value.gastDeg).toBeCloseTo(280.1904, 3);
+    const stUtNoon = engine.siderealTime({ jdUt: 2451545, jdTt: 2451545 + 63.8285 / secondsPerDay, deltaTYear: 2000 });
+    if (stUtNoon.status !== 'ok') throw new Error(stUtNoon.reason);
+    expect(stUtNoon.value.gastDeg).toBeCloseTo(280.457, 2);
+
+    const eq = engine.equatorial(geo.value.longitude, geo.value.latitude, j2000);
+    if (eq.status !== 'ok') throw new Error(eq.reason);
+    expect(Number.isFinite(eq.value.rightAscensionDeg)).toBe(true);
+    expect(Number.isFinite(eq.value.declinationDeg)).toBe(true);
+
+    // Input and coverage validation
+    expect(engine.phenomena('Chiron', j2000)).toMatchObject({ status: 'unavailable', reason: 'unsupported-body' });
+    expect(engine.topocentric('Moon', j2000, { latitudeDeg: 95, longitudeDeg: 0 })).toMatchObject({ status: 'unavailable', reason: 'invalid-input' });
+    expect(engine.equatorial(NaN, 0, j2000)).toMatchObject({ status: 'unavailable', reason: 'invalid-input' });
+    const outside = instantAtTt(EPHEMERA_COVERAGE_TT.start - 1, 1549.9);
+    expect(engine.siderealTime(outside)).toMatchObject({ status: 'unavailable', reason: 'outside-coverage' });
+  });
 });

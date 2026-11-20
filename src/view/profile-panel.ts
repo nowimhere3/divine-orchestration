@@ -1,3 +1,5 @@
+import type { EphemeraEngine } from '../engine/ephemera';
+import { calculateDateOnlyMoonSummary, calculateMoonSky, calculateMoonState } from '../lunar';
 import { MAX_BACKUP_BYTES, missingProfileMessage, profileLibrary, profileName, readProfile, serializeBackup } from '../store/library';
 import type { NatalProfile, ProfileSettings } from '../store/library';
 import { resolveBirthTime } from '../time/resolve';
@@ -17,14 +19,46 @@ function coordinate(value: number, positive: string, negative: string) {
   return `${Math.abs(value).toFixed(2)}° ${value >= 0 ? positive : negative}`;
 }
 
-export function describeProfile(profile: NatalProfile) {
+export function describeProfile(profile: NatalProfile, engine?: EphemeraEngine) {
   const { birth, observer } = profile;
+  let moonFact: string | null = null;
+  let localMoonFact: string | null = null;
+
+  if (engine) {
+    if (birth.time === null) {
+      const summary = calculateDateOnlyMoonSummary(engine, birth);
+      moonFact = summary.fullSummary;
+    } else {
+      const resolved = resolveBirthTime(birth, engine.modelDeltaTSeconds);
+      if (resolved.kind === 'resolved') {
+        const stateRes = calculateMoonState(engine, resolved);
+        if (stateRes.status === 'ok') {
+          const m = stateRes.value;
+          moonFact = `Moon: ${m.phaseLabel} · ${m.illuminationPercent.toFixed(1)}% lit · ${m.formattedPosition} (geocentric)`;
+        }
+        if (observer) {
+          const skyRes = calculateMoonSky(engine, resolved, observer, birth.timeZone ?? 'UTC');
+          if (skyRes.status === 'ok') {
+            const sky = skyRes.value;
+            const altSign = sky.apparentAltitudeDeg >= 0 ? '+' : '−';
+            const signNote = sky.signDiffers ? ` (adjacent sign vs geocentric ${sky.geocentricSignName})` : '';
+            localMoonFact = `Local birth Moon: ${sky.topocentricFormatted} topocentric${signNote} · ${altSign}${Math.abs(sky.apparentAltitudeDeg).toFixed(1)}° altitude (${sky.visibilityLabel})`;
+          }
+        } else {
+          localMoonFact = 'Local birth Moon: No coordinates (topocentric & altitude unavailable)';
+        }
+      }
+    }
+  }
+
   return {
     date: birthDate(birth.date),
     time: birth.time ? `${birth.time} local` : 'Birth time unknown',
     place: birth.timeZone ?? (birth.offsetOverride ? `UTC${birth.offsetOverride}` : 'No time zone'),
     coordinates: observer ? `${coordinate(observer.latitudeDeg, 'N', 'S')}, ${coordinate(observer.longitudeDeg, 'E', 'W')}` : 'No coordinates',
     houses: houseName(profile.houseSystem),
+    moonFact,
+    localMoonFact,
   };
 }
 
@@ -47,6 +81,7 @@ export function mountProfiles(
   options?: {
     activeId?: () => string | undefined;
     onSync?: (profiles: readonly NatalProfile[], available: boolean) => void;
+    engine?: EphemeraEngine;
   },
 ): ProfileController {
   const validate = (value: unknown) => readProfile(value, birth => resolveBirthTime(birth, deltaT).kind !== 'unresolved');
@@ -88,7 +123,7 @@ export function mountProfiles(
   }
 
   function card(profile: NatalProfile) {
-    const info = describeProfile(profile);
+    const info = describeProfile(profile, options?.engine);
     const item = node('li');
     item.className = 'profile-card';
     item.dataset.profileId = profile.id;
@@ -129,6 +164,16 @@ export function mountProfiles(
     const facts = node('ul');
     facts.className = 'profile-facts';
     for (const text of [info.date, info.time, info.place, info.coordinates, `${info.houses} houses`]) facts.append(node('li', text));
+    if (info.moonFact) {
+      const moonLi = node('li', info.moonFact);
+      moonLi.className = 'profile-fact-lunar';
+      facts.append(moonLi);
+    }
+    if (info.localMoonFact) {
+      const localLi = node('li', info.localMoonFact);
+      localLi.className = 'profile-fact-lunar-local';
+      facts.append(localLi);
+    }
     const actions = node('div');
     actions.className = 'profile-actions';
     if (editing?.id === profile.id && editing.mode === 'delete') {

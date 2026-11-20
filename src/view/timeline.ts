@@ -53,7 +53,7 @@ export function relativeLabel(selectedMs: number, nowMs: number) {
   return relative.format(Math.round(diff / size), unit);
 }
 
-export function bindTimeline(change: (date: string, time: string, label: string) => void, signal: AbortSignal) {
+export function bindTimeline(change: (date: string, time: string, label: string, zone: string) => void, signal: AbortSignal) {
   const date = byId<HTMLInputElement>('transit-date');
   const time = byId<HTMLInputElement>('transit-time');
   const slider = byId<HTMLInputElement>('timeline');
@@ -136,7 +136,7 @@ export function bindTimeline(change: (date: string, time: string, label: string)
     next.disabled = selected >= maxInstant;
     byId('time-relative').textContent = relativeLabel(selected, Date.now());
     placeMarker(first, last);
-    change(dateAt(selected), clockAt(selected), label);
+    change(dateAt(selected), clockAt(selected), label, zone);
   }
 
   /** Marks today on the scrub track whenever it falls inside the visible window. */

@@ -5,9 +5,9 @@ import { CATEGORIES, parseLearnRoute, searchEntries } from '../../src/view/learn
 import { viewFromHash } from '../../src/view/shell';
 
 describe('Learn routes', () => {
-  it('resolves every one of the 47 entry ids exactly', () => {
+  it('resolves every one of the 49 entry ids exactly', () => {
     const entries = allEntries();
-    expect(entries).toHaveLength(47);
+    expect(entries).toHaveLength(49);
     for (const entry of entries) {
       expect(parseLearnRoute(`#learn/${entry.id}`), entry.id).toEqual({ type: 'entry', id: entry.id });
     }
@@ -41,8 +41,8 @@ describe('Learn routes', () => {
 
 describe('Learn search', () => {
   it('counts every category and the whole glossary', () => {
-    expect(CATEGORIES.map(category => entriesOfKind(category.kind).length)).toEqual([10, 12, 12, 5, 2, 6]);
-    expect(searchEntries('')).toHaveLength(47);
+    expect(CATEGORIES.map(category => entriesOfKind(category.kind).length)).toEqual([10, 12, 12, 5, 2, 8]);
+    expect(searchEntries('')).toHaveLength(49);
     for (const category of CATEGORIES) expect(searchEntries('', category.kind)).toHaveLength(entriesOfKind(category.kind).length);
   });
 

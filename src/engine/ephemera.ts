@@ -64,6 +64,22 @@ export type EngineResult<Value, Settings> = {
 
 export type PlanetPosition = Readonly<Position & { retrograde: boolean }>;
 
+export interface BodyPhenomena {
+  readonly phaseAngleDeg: number;
+  /** Illuminated fraction of the apparent disk, 0..1. */
+  readonly illumination: number;
+  /** 3D angular separation from the Sun, 0..180 degrees. */
+  readonly elongationDeg: number;
+  /** Apparent angular diameter, degrees. */
+  readonly diameterDeg: number;
+  readonly magnitude: number;
+}
+
+export interface EquatorialCoordinates {
+  readonly rightAscensionDeg: number;
+  readonly declinationDeg: number;
+}
+
 export interface HouseCusps {
   /** Twelve tropical longitudes in degrees, with house one at index zero. */
   readonly cuspsDeg: readonly number[];
@@ -88,6 +104,14 @@ export interface EphemeraEngine {
     EngineResult<{ readonly jdUt: number }, SearchSettings & { jdUt: number; longitudeDeg: number }>;
   station(body: string, jdTt: number, options: SearchOptions):
     EngineResult<{ readonly jdTt: number; readonly turns: 'retrograde' | 'direct' }, SearchSettings & { jdTt: number }>;
+  phenomena(body: string, instant: EngineInstant):
+    EngineResult<BodyPhenomena, EngineInstant & { body: string }>;
+  topocentric(body: string, instant: EngineInstant, observer: Observer, elevationM?: number):
+    EngineResult<PlanetPosition, EngineInstant & Observer & { body: string; elevationM: number }>;
+  siderealTime(instant: EngineInstant):
+    EngineResult<{ readonly gastDeg: number }, EngineInstant>;
+  equatorial(longitudeDeg: number, latitudeDeg: number, instant: EngineInstant):
+    EngineResult<EquatorialCoordinates, EngineInstant & { longitudeDeg: number; latitudeDeg: number }>;
 }
 
 function unavailable<Settings>(settings: Settings, warnings: readonly EngineWarning[], reason: UnavailableReason) {
@@ -233,6 +257,79 @@ export async function createEphemeraEngine(wasm: BufferSource | WebAssembly.Modu
       return !event || !inSearchWindow(event.jd, jdTt, options.direction, searchedDays)
         ? unavailable(settings, warnings, 'no-event-returned')
         : calculated(settings, warnings, { jdTt: event.jd, turns: event.turns });
+    },
+
+    phenomena(body, instant) {
+      const settings = { ...instant, body };
+      const warnings = edgeWarnings(instant.jdTt);
+      const invalid = invalidInstant(instant);
+      if (invalid) return unavailable(settings, warnings, invalid);
+      const id = positionBody(body);
+      if (id === undefined) return unavailable(settings, warnings, 'unsupported-body');
+
+      const result = eph.phenomena(id, instant.jdTt);
+      if (!result || !Object.values(result).every(Number.isFinite)) {
+        return unavailable(settings, warnings, 'calculation-unavailable');
+      }
+      return calculated(settings, warnings, {
+        phaseAngleDeg: result.phaseAngle,
+        illumination: result.phase,
+        elongationDeg: result.elongation,
+        diameterDeg: result.diameter,
+        magnitude: result.magnitude,
+      });
+    },
+
+    topocentric(body, instant, observer, elevationM = 0) {
+      const settings = { ...instant, ...observer, body, elevationM };
+      const warnings = edgeWarnings(instant.jdTt);
+      const invalid = invalidInstant(instant);
+      if (invalid) return unavailable(settings, warnings, invalid);
+      const { latitudeDeg, longitudeDeg } = observer;
+      if (!Number.isFinite(latitudeDeg) || Math.abs(latitudeDeg) > 90 ||
+          !Number.isFinite(longitudeDeg) || Math.abs(longitudeDeg) > 180 ||
+          !Number.isFinite(elevationM)) {
+        return unavailable(settings, warnings, 'invalid-input');
+      }
+      const id = positionBody(body);
+      if (id === undefined) return unavailable(settings, warnings, 'unsupported-body');
+
+      const position = eph.topocentric(id, instant.jdUt, longitudeDeg, latitudeDeg, elevationM, {
+        year: instant.deltaTYear,
+      });
+      if (!position || !Object.values(position).every(Number.isFinite)) {
+        return unavailable(settings, warnings, 'calculation-unavailable');
+      }
+      return calculated(settings, warnings, { ...position, retrograde: position.longitudeSpeed < 0 });
+    },
+
+    siderealTime(instant) {
+      const warnings = edgeWarnings(instant.jdTt);
+      const invalid = invalidInstant(instant);
+      if (invalid) return unavailable(instant, warnings, invalid);
+      const gastDeg = eph.siderealTime(instant.jdUt);
+      if (!Number.isFinite(gastDeg)) {
+        return unavailable(instant, warnings, 'calculation-unavailable');
+      }
+      return calculated(instant, warnings, { gastDeg });
+    },
+
+    equatorial(longitudeDeg, latitudeDeg, instant) {
+      const settings = { ...instant, longitudeDeg, latitudeDeg };
+      const warnings = edgeWarnings(instant.jdTt);
+      const invalid = invalidInstant(instant);
+      if (invalid) return unavailable(settings, warnings, invalid);
+      if (!Number.isFinite(longitudeDeg) || !Number.isFinite(latitudeDeg)) {
+        return unavailable(settings, warnings, 'invalid-input');
+      }
+      const result = eph.eclipticToEquatorial(longitudeDeg, latitudeDeg, instant.jdTt);
+      if (!result || !Number.isFinite(result.rightAscension) || !Number.isFinite(result.declination)) {
+        return unavailable(settings, warnings, 'calculation-unavailable');
+      }
+      return calculated(settings, warnings, {
+        rightAscensionDeg: result.rightAscension,
+        declinationDeg: result.declination,
+      });
     },
   };
 }

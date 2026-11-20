@@ -77,6 +77,20 @@ export const SOURCES: Readonly<Record<SourceId, Source>> = {
     id: 'britannica-astrology', title: 'Astrology', author: 'Encyclopaedia Britannica',
     used: 'General background on the zodiac, houses and aspects.', url: 'https://www.britannica.com/topic/astrology',
   },
+  'usno-phases': {
+    id: 'usno-phases', title: 'Astronomical Applications Department: Phases of the Moon and Meridian Transit', author: 'U.S. Naval Observatory',
+    used: 'Definitions of the four principal lunar phases by geocentric ecliptic elongation, illuminated fraction and local meridian transit.',
+    url: 'https://aa.usno.navy.mil/data/MoonPhases',
+  },
+  'jpl-horizons': {
+    id: 'jpl-horizons', title: 'JPL Horizons On-Line Ephemeris System', author: 'NASA Jet Propulsion Laboratory',
+    used: 'Reference geocentric and topocentric lunar ephemerides, phase angles, illuminated fraction and local altitude.',
+    url: 'https://ssd.jpl.nasa.gov/horizons/',
+  },
+  'meeus-algorithms': {
+    id: 'meeus-algorithms', title: 'Astronomical Algorithms (2nd edition, 1998)', author: 'Jean Meeus',
+    used: 'Formulas for lunar phase angles, illuminated fraction of the Moon’s disk, atmospheric refraction, parallax and meridian passage.',
+  },
 };
 
 export const sourcesFor = (ids: readonly SourceId[]) => ids.map(id => SOURCES[id]);

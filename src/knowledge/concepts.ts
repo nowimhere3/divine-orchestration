@@ -92,4 +92,41 @@ export const CONCEPTS: Readonly<Record<string, Entry>> = {
     reading: 'The planets keep their signs under both systems; the house numbers can change. You can switch systems in the birth details and compare.',
     sources: ['wiki-house', 'britannica-astrology', 'ptolemy'],
   },
+  'moon-phases': {
+    id: 'concept/moon-phases', kind: 'concept', name: 'Moon phases', symbol: '◐', tagline: 'Phases, illumination and the waxing/waning cycle',
+    summary: 'The lunar phases describe how much of the Moon’s sunlit hemisphere faces Earth as the Moon orbits our planet relative to the Sun.',
+    facts: [
+      'Astronomically, the cycle is measured by geocentric ecliptic elongation: the Moon’s apparent tropical longitude minus the Sun’s (0° to 360°). From 0° to 180° the Moon is waxing (growing in illumination); from 180° to 360° it is waning (shrinking).',
+      'The four principal phases are exact instants: New Moon (0°), First Quarter (90°), Full Moon (180°) and Last Quarter (270°). Between them lie the four intermediate phases: Waxing Crescent, Waxing Gibbous, Waning Gibbous and Waning Crescent. In this observatory, principal phase labels apply within ±3° (about ±6 hours) of each exact quarter angle.',
+      'Illumination percentage is the sunlit fraction of the apparent lunar disk, calculated from the 3D phase angle i as (1 + cos i) / 2. Because the Moon’s orbit is tilted up to 5.15° from the ecliptic, a non-eclipse Full Moon passes slightly north or south of exact opposition and peaks around 99.7%–99.9% illumination rather than 100%.',
+      'A full synodic month (New Moon to New Moon) averages 29.53 days but varies between roughly 29.18 and 29.93 days because Earth and the Moon travel on elliptical orbits. Phase and illumination are geocentric quantities, so they are virtually the same everywhere on Earth at a given UTC moment; only the local clock time differs.',
+    ],
+    symbolism: [
+      'Traditional astrology divides the lunation into a waxing half associated with initiating, gathering and building, and a waning half associated with integrating, reflecting and releasing.',
+      'New Moons are traditionally treated as quiet beginnings, Quarter Moons as turning points of decision, and Full Moons as moments of culmination or visibility.',
+      'These themes are cultural and reflective traditions, not physical forces, and there is no objective emotional-intensity score attached to any phase or illumination percentage.',
+    ],
+    reading: 'Use the Lunar Observatory card in the Time Machine or the Moon Inspector to check the exact astronomical phase, illumination, Moon age and upcoming principal phases alongside the Moon’s tropical sign.',
+    reflection: 'Am I in a season of starting something new, bringing work to completion, or letting go of what is finished?',
+    sources: ['usno-phases', 'jpl-horizons', 'meeus-algorithms', 'wiki-planets-astrology'],
+    see: ['concept/lunar-parallax', 'concept/degrees'],
+  },
+  'lunar-parallax': {
+    id: 'concept/lunar-parallax', kind: 'concept', name: 'Lunar parallax & local sky', symbol: '⌖', tagline: 'Geocentric vs topocentric Moon, altitude and meridian passage',
+    summary: 'Because the Moon is much closer to Earth than the planets, viewing it from a specific city on Earth’s surface (topocentric) shifts its apparent position by up to 1° compared with viewing it from Earth’s centre (geocentric).',
+    facts: [
+      'Geocentric coordinates measure the sky from the centre of the Earth; topocentric coordinates measure the sky from an observer’s exact latitude and longitude on the WGS84 Earth ellipsoid.',
+      'At a mean distance of about 384,400 km (roughly 60 Earth radii), the Moon exhibits a horizontal parallax of up to ±1.03°. When the geocentric Moon lies within 1° of a 30° zodiac cusp, topocentric parallax can place the locally observed Moon in the adjacent zodiac sign.',
+      'To keep natal charts, transit wheels, aspects and snapshots consistent with standard ephemerides, all chart positions in this app remain strictly geocentric. When an observer location is provided, the Lunar Observatory displays topocentric Moon longitude as a clearly labelled additional local measurement and explains any sign-boundary difference.',
+      'Local altitude measures how many degrees the topocentric Moon sits above (+) or below (−) the horizon, including standard atmospheric refraction (about +0.57° near the horizon). Upper meridian passage (culmination) is the daily moment when the Moon crosses the observer’s north–south meridian and reaches its highest altitude. Because the Moon moves eastward in orbit, upper meridian passage falls roughly 50 minutes later each day, so once every synodic month a local calendar date has no upper meridian passage.',
+    ],
+    symbolism: [
+      'Astrological tradition uses the universal geocentric zodiacal position for sign and aspect meanings, while treating local horizon visibility (above or below the Earth) and meridian culmination as qualitative context for where the Moon sits in the observer’s sky.',
+      'Local sky height and parallax are astronomical geometry, not a measure of personal luck or emotional intensity.',
+    ],
+    reading: 'Select an observer location in the Lunar Observatory—or view a saved profile with birthplace coordinates—to compare the standard geocentric chart Moon with the local topocentric Moon, its altitude above the horizon and its upper meridian passage.',
+    reflection: 'How does looking at the actual sky above my location complement looking at the symbolic wheel?',
+    sources: ['jpl-horizons', 'usno-phases', 'meeus-algorithms', 'wiki-ecliptic'],
+    see: ['concept/moon-phases', 'concept/natal-chart'],
+  },
 };

@@ -11,10 +11,19 @@ import { availablePositions, calculateNatal, calculatePositions, chartAspects, p
 import type { PositionMap } from './chart-data';
 import { aspectTable, houseName, houseTables, node, planetTable, unavailableText } from './readings';
 import { regionMembers, renderInspection } from './inspector';
+import type { InspectorLunarLayer, InspectorLunarModel } from './inspector';
 import { parseElementKey } from '../knowledge';
+import {
+  calculateDateOnlyMoonSummary,
+  calculateLunarCycle,
+  calculateMoonSky,
+  calculateMoonState,
+  formatObserverCoordinates,
+} from '../lunar';
 import { mountChartTools } from './chart-tools';
 import { bindTimeline, byId } from './timeline';
 import { mountEventSearch } from './event-search';
+import { mountLunarCard } from './lunar-card';
 import { mountProfiles } from './profile-panel';
 import type { ProfileController } from './profile-panel';
 import { mountExportStudio } from './export-studio';
@@ -74,7 +83,12 @@ export function mountObservatory(engine: EphemeraEngine) {
   let selectedDate = '';
   let selectedTime = '';
   let selectedLabel = '';
+  let selectedZone = 'UTC';
   let selectedTt: number | null = null;
+  let natalLunarLayer: InspectorLunarLayer = {
+    state: null, cycle: null, sky: null, observerLabel: 'No birthplace coordinates',
+    missingObserverReason: null, timeZone: 'UTC', dateOnlySummary: null,
+  };
   let transitChart: TimedChart | null = null;
   let provenance: SnapshotInput['engine'] = null;
   let birthEdited = false;
@@ -211,6 +225,10 @@ export function mountObservatory(engine: EphemeraEngine) {
     } };
   }, signal, () => birthEdited && (attemptFailed || !birthDialog.open)
     ? 'Export is blocked because your new birth details have not been calculated. Open Edit birth details and calculate first.' : '');
+  const lunarCard = mountLunarCard(engine, {
+    onInspectMoon: () => select('transit/moon'),
+    onObserverChange: () => showInspection(),
+  }, signal);
   profiles = mountProfiles(engine.modelDeltaTSeconds, () => {
     if (!natal || birthEdited || attemptFailed) return null;
     return { birth: natal.time.input, observer: natal.settings.observer,
@@ -227,8 +245,11 @@ export function mountObservatory(engine: EphemeraEngine) {
     activeId: () => activeProfileId,
     onSync: (list, available) => {
       syncProfileControls(list, available);
+      lunarCard.syncProfiles(list);
       refreshContext();
+      if (natal) showInspection();
     },
+    engine,
   });
 
   const houses = () => natal?.houses.status === 'available' ? natal.houses.value : null;
@@ -307,7 +328,35 @@ export function mountObservatory(engine: EphemeraEngine) {
     attemptFailed = false;
     const system = profile?.houseSystem ?? (byId<HTMLSelectElement>('house-system').value === 'Placidus' ? 'Placidus' : 'WholeSign');
     const label = profile?.name ?? (!birthEdited ? natal?.label ?? null : null);
-    natal = { ...calculateNatal(engine, resolved, location || null, system), label };
+    const birthPlace = location || null;
+    natal = { ...calculateNatal(engine, resolved, birthPlace, system), label };
+    const birthZone = input.timeZone ?? 'UTC';
+    if (resolved.kind === 'resolved') {
+      const nStateRes = calculateMoonState(engine, resolved);
+      const nCycleRes = calculateLunarCycle(engine, resolved);
+      const nSkyRes = birthPlace ? calculateMoonSky(engine, resolved, birthPlace, birthZone) : null;
+      natalLunarLayer = {
+        state: nStateRes.status === 'ok' ? nStateRes.value : null,
+        cycle: nCycleRes.status === 'ok' ? nCycleRes.value : null,
+        sky: nSkyRes?.status === 'ok' ? nSkyRes.value : null,
+        observerLabel: birthPlace ? `Birthplace (${formatObserverCoordinates(birthPlace)})` : 'No birthplace coordinates',
+        missingObserverReason: birthPlace
+          ? null
+          : 'Birthplace coordinates not set. Enter latitude and longitude in Edit birth details to calculate topocentric birth Moon longitude, altitude, visibility and meridian passage.',
+        timeZone: birthZone,
+        dateOnlySummary: null,
+      };
+    } else {
+      natalLunarLayer = {
+        state: null,
+        cycle: null,
+        sky: null,
+        observerLabel: birthPlace ? `Birthplace (${formatObserverCoordinates(birthPlace)})` : 'No birthplace coordinates',
+        missingObserverReason: 'Unknown birth time. Exact birth-Moon degree, topocentric longitude, altitude and meridian passage require a birth time.',
+        timeZone: birthZone,
+        dateOnlySummary: calculateDateOnlyMoonSummary(engine, input),
+      };
+    }
     if (profile || birthEdited) activeProfileId = profile?.id;
     birthEdited = false;
     if (profile) {
@@ -363,6 +412,24 @@ export function mountObservatory(engine: EphemeraEngine) {
     return [...birthAspects, ...transitAspects].filter(aspect => pointKey(aspect.from) === selectedKey || pointKey(aspect.to) === selectedKey);
   }
 
+  function buildLunarModel(): InspectorLunarModel {
+    const snap = lunarCard.getSnapshot();
+    return {
+      natal: natalLunarLayer,
+      transit: {
+        state: snap.state,
+        cycle: snap.cycle,
+        sky: snap.sky,
+        observerLabel: snap.resolvedLocation.fullLabel,
+        missingObserverReason: snap.resolvedLocation.observer
+          ? null
+          : 'No observer location selected in the Time Machine. Choose an observer location in the Lunar Observatory card to calculate local altitude, visibility, meridian passage and topocentric longitude.',
+        timeZone: snap.displayZone,
+        dateOnlySummary: null,
+      },
+    };
+  }
+
   function showInspection() {
     const active = inspection.contains(document.activeElement)
       ? (document.activeElement as HTMLElement).dataset.selectKey : null;
@@ -374,6 +441,7 @@ export function mountObservatory(engine: EphemeraEngine) {
       requestedSystem: natal?.settings.requestedHouseSystem ?? null, orbs: createAspectRuleSet().orbsDeg,
       moment: selectedLabel, birth: applied.text, demo: applied.demo, back: returnTo,
       position: layer === 'natal' ? natalPoints.get(id) : layer === 'transit' ? transitPoints.get(id) : undefined,
+      lunar: buildLunarModel(),
     });
     if (active) [...inspection.querySelectorAll<HTMLButtonElement>('[data-select-key]')]
       .find(button => button.dataset.selectKey === active)?.focus({ preventScroll: true });
@@ -477,6 +545,13 @@ export function mountObservatory(engine: EphemeraEngine) {
       console.error(error);
     }
     byId('calculation-notes').replaceChildren(...messages.map(message => node('li', message)));
+    const selectedClock = selectedTime.length === 5 ? `${selectedTime}:00` : selectedTime;
+    const selectedEpochMs = Date.parse(`${selectedDate}T${selectedClock}Z`);
+    lunarCard.update(
+      instant.kind === 'resolved' ? instant : null,
+      Number.isFinite(selectedEpochMs) ? selectedEpochMs : null,
+      selectedZone,
+    );
     showData();
     showInspection();
     markSelection();
@@ -559,10 +634,15 @@ export function mountObservatory(engine: EphemeraEngine) {
   }, { signal });
   byId<HTMLButtonElement>('calculate').disabled = false;
   calculateBirth(true);
-  bindTimeline((date, time, label) => {
+  bindTimeline((date, time, label, zone) => {
     selectedLabel = label;
+    selectedZone = zone;
     if (date === selectedDate && time === selectedTime) {
-      if (!frame) byId('selected-epoch').textContent = label;
+      if (!frame) {
+        byId('selected-epoch').textContent = label;
+        lunarCard.updateZone(zone);
+        showInspection();
+      }
       return;
     }
     exportStudio.invalidate();

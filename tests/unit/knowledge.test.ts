@@ -14,7 +14,8 @@ describe('knowledge library', () => {
     expect(entriesOfKind('aspect')).toHaveLength(5);
     expect(entriesOfKind('angle')).toHaveLength(2);
     expect(entriesOfKind('concept').map(entry => entry.id).sort()).toEqual([
-      'concept/degrees', 'concept/house-systems', 'concept/natal-chart', 'concept/orb', 'concept/retrograde', 'concept/transits',
+      'concept/degrees', 'concept/house-systems', 'concept/lunar-parallax', 'concept/moon-phases',
+      'concept/natal-chart', 'concept/orb', 'concept/retrograde', 'concept/transits',
     ]);
     for (const id of planets) expect(bodyEntry(id), id).toBeDefined();
   });
