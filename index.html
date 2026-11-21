@@ -139,12 +139,13 @@
         <section id="personal-reading" class="panel reading-panel" aria-labelledby="reading-heading">
           <div class="reading-panel-head">
             <div>
-              <p class="eyebrow">Natal interpretation · Local-first</p>
+              <p id="reading-eyebrow" class="eyebrow">Natal interpretation · Local-first</p>
               <h2 id="reading-heading" tabindex="-1">Personal birth-chart reading</h2>
-              <p id="reading-subtitle" class="lede">Synthesize your Sun, Moon, Ascendant, chart ruler, houses, aspects and themes directly from calculated chart facts.</p>
+              <p id="reading-subtitle" class="lede">Synthesize your Sun, Moon, Ascendant, chart ruler, houses, aspects and transits directly from calculated chart facts.</p>
             </div>
             <div class="reading-panel-actions">
-              <button id="interpret-birth-btn" type="button" class="reading-trigger" aria-expanded="false" aria-controls="personal-reading-body">Interpret my birth chart</button>
+              <button id="interpret-birth-btn" type="button" class="reading-trigger" aria-expanded="false" aria-pressed="false" aria-controls="personal-reading-body">Interpret my birth chart</button>
+              <button id="interpret-transits-btn" type="button" class="reading-trigger reading-trigger-transit" aria-expanded="false" aria-pressed="false" aria-controls="personal-reading-body">Interpret my transits</button>
               <button id="reading-close" type="button" class="secondary" hidden>Hide reading</button>
             </div>
           </div>
@@ -289,11 +290,16 @@
                 </div>
               </div>
               <fieldset class="choice-group">
-                <legend>Local natal synthesis (optional)</legend>
+                <legend>Local symbolic synthesis (optional)</legend>
                 <div class="choice">
                   <input type="checkbox" id="export-include-natal" aria-describedby="export-natal-hint">
                   <label for="export-include-natal">Include local natal symbolic synthesis</label>
-                  <p id="export-natal-hint" class="hint">Adds structured symbolic summaries from this app’s local reading to the snapshot’s interpretations list. Never includes names, birth dates or coordinates when Redacted is selected.</p>
+                  <p id="export-natal-hint" class="hint">Adds structured natal symbolic summaries regenerated from calculated chart geometry. Never includes names, birth dates or coordinates when Redacted is selected.</p>
+                </div>
+                <div class="choice">
+                  <input type="checkbox" id="export-include-transits" aria-describedby="export-transits-hint">
+                  <label for="export-include-transits">Include local transit symbolic synthesis</label>
+                  <p id="export-transits-hint" class="hint">Adds structured transit symbolic summaries regenerated from captured natal and transit positions at the Time Machine moment. Redacted exports omit timestamps, zones and birth details.</p>
                 </div>
               </fieldset>
               <button type="submit" class="primary">Prepare export</button>
@@ -325,6 +331,7 @@
                 <legend>Prompt focus</legend>
                 <label class="seg"><input type="radio" name="export-prompt-preset" value="facts" checked><span>Strict facts</span></label>
                 <label class="seg"><input type="radio" name="export-prompt-preset" value="natal"><span>Deeper natal reading</span></label>
+                <label class="seg"><input type="radio" name="export-prompt-preset" value="transit"><span>Deeper transit reading</span></label>
               </fieldset>
               <blockquote id="interpretation-prompt"></blockquote>
               <button id="export-copy-prompt" type="button">Copy interpretation prompt</button>

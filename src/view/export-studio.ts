@@ -4,8 +4,8 @@ import { selectEventContext } from '../export/event-selection';
 import type { EventSelection } from '../export/event-selection';
 import { createSnapshotV0, renderSnapshotMarkdown, serializeSnapshot } from '../export/snapshot';
 import type { SnapshotInput, SnapshotV0 } from '../export/snapshot';
-import { natalSymbolicMeanings } from '../interpret';
-import type { NatalReading } from '../interpret';
+import { natalSymbolicMeanings, transitSymbolicMeanings } from '../interpret';
+import type { NatalReading, TransitReading } from '../interpret';
 import { startEventSearch } from '../search/client';
 import type { EventSearchJob } from '../search/client';
 import type { FixedNatalPoint } from '../search/events';
@@ -25,9 +25,15 @@ export const natalDeepDivePrompt = [
   'Keep astronomical measurements clearly distinct from traditional astrological symbolism. Never present symbolism as guaranteed prediction, never invent missing houses, angles, degrees or birth details, and note any unavailable data honestly.',
 ].join(' ');
 
+export const transitDeepDivePrompt = [
+  'Using only the calculated natal positions, transiting sky positions, transit-to-natal aspects, planetary events and any local transit synthesis in this Divine Orchestration snapshot, provide a grounded, personalized transit reflection for the selected moment.',
+  'Distinguish long-term outer-planet cycles from shorter medium-term and lunar transits, note applying versus separating motion and retrograde passes where supplied, and keep astronomical facts separate from traditional symbolism.',
+  'Never invent exact pass dates, houses, angles or events that are not supplied, never treat near misses as exact contacts, and frame all guidance for reflection and planning rather than guaranteed prediction.',
+].join(' ');
+
 export function mountExportStudio(
   engine: EphemeraEngine,
-  capture: () => { input: SnapshotInput; targets: readonly FixedNatalPoint[]; natalReading?: NatalReading } | null,
+  capture: () => { input: SnapshotInput; targets: readonly FixedNatalPoint[]; natalReading?: NatalReading; transitReading?: TransitReading } | null,
   signal: AbortSignal,
   /** Returns a reason when the chart on screen is not the one the person has entered, so nothing is exported. */
   guard: () => string = () => '',
@@ -36,6 +42,7 @@ export function mountExportStudio(
   const controls = byId<HTMLFieldSetElement>('export-controls');
   const options = byId('export-event-options');
   const includeNatal = byId<HTMLInputElement>('export-include-natal');
+  const includeTransits = byId<HTMLInputElement>('export-include-transits');
   const stepTwo = byId('export-step-two');
   const summary = byId('export-summary');
   const moment = byId('export-moment');
@@ -53,7 +60,10 @@ export function mountExportStudio(
   let job: EventSearchJob | undefined;
 
   function activePrompt() {
-    return promptPreset() === 'natal' ? natalDeepDivePrompt : interpretationPrompt;
+    const preset = promptPreset();
+    return preset === 'natal' ? natalDeepDivePrompt
+      : preset === 'transit' ? transitDeepDivePrompt
+        : interpretationPrompt;
   }
 
   function showPrompt() {
@@ -159,12 +169,20 @@ export function mountExportStudio(
         if (active !== job) return;
         input = { ...input, context: { ...input.context, ...selectEventContext(result, selection) } };
       }
-      if (includeNatal.checked && !redactBirthDetails && captured.natalReading) {
+      if (!redactBirthDetails && (includeNatal.checked || includeTransits.checked)) {
         const natalChartId = input.charts.find(c => c.kind === 'natal')?.id ?? 'natal';
-        input = { ...input, interpretations: natalSymbolicMeanings(captured.natalReading, natalChartId) };
+        const transitChartId = input.charts.find(c => c.kind === 'transit')?.id ?? 'transit';
+        const fullMeanings = [
+          ...(includeNatal.checked && captured.natalReading ? natalSymbolicMeanings(captured.natalReading, natalChartId) : []),
+          ...(includeTransits.checked && captured.transitReading ? transitSymbolicMeanings(captured.transitReading, transitChartId, natalChartId) : []),
+        ];
+        input = { ...input, interpretations: fullMeanings };
       }
       snapshot = createSnapshotV0(input, {
-        redactBirthDetails, includeRedactedNatalSynthesis: includeNatal.checked, dateOnlyEngine: engine,
+        redactBirthDetails,
+        includeRedactedNatalSynthesis: includeNatal.checked,
+        includeRedactedTransitSynthesis: includeTransits.checked,
+        dateOnlyEngine: engine,
       });
       showPreview();
       const eventSummary = input.context.eventSummary;
@@ -172,7 +190,7 @@ export function mountExportStudio(
       status.textContent = eventSummary
         ? `Preview ready. Includes ${eventSummary.includedEvents} of ${eventSummary.totalEvents} events. Search status: ${eventSummary.status}.`
         : synthCount
-          ? `Preview ready for the selected moment, with ${synthCount} local natal symbolic notes.`
+          ? `Preview ready for the selected moment, with ${synthCount} local symbolic notes.`
           : 'Preview ready for the selected moment.';
       summary.replaceChildren(...[
         redactBirthDetails ? 'Redacted' : 'Full',

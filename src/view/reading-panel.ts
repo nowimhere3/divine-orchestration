@@ -9,26 +9,39 @@ import type {
   NatalAspectReading,
   NatalReading,
   PlacementReading,
+  TransitAspectReading,
+  TransitHouseReading,
+  TransitReading,
+  TransitTheme,
 } from '../interpret';
 import { aspectMeta, sourcesFor } from '../knowledge';
 import type { ZodiacElement, ZodiacMode } from '../knowledge';
+import { formatLunarTimestamp } from '../lunar';
+import { planetName } from './chart-data';
 import { aspectSymbols, planetGlyphs, quiet } from './inspector';
+import { learnHref } from './learn-model';
 import { node } from './readings';
 import { byId } from './timeline';
 
 const ELEMENTS: readonly ZodiacElement[] = ['fire', 'earth', 'air', 'water'];
 const MODES: readonly ZodiacMode[] = ['cardinal', 'fixed', 'mutable'];
 
+export type ReadingMode = 'natal' | 'transits';
+
 export interface ReadingPanelHooks {
   readonly onSelectKey: (key: string) => void;
   readonly onEditBirth: () => void;
+  readonly onJumpToEpoch: (epochMs: number) => void;
+  readonly onModeChange?: (mode: ReadingMode | null) => void;
 }
 
 export interface ReadingPanelController {
   update(reading: NatalReading): void;
-  open(moveFocus?: boolean): void;
+  updateTransits(reading: TransitReading): void;
+  open(moveFocus?: boolean, mode?: ReadingMode): void;
   close(): void;
   isOpen(): boolean;
+  activeMode(): ReadingMode | null;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string) {
@@ -164,7 +177,7 @@ function renderThemeCard(theme: ChartTheme): HTMLElement {
     : theme.kind === 'stellium' ? 'Concentration'
       : theme.kind === 'pattern' ? 'Aspect pattern'
         : theme.kind === 'angular' ? 'Angular anchor'
-          : theme.kind === 'hemisphere' ? 'Hemisphere'
+          : theme.kind === 'hemisphere' ? 'House emphasis'
             : theme.kind === 'retrograde' ? 'Retrograde'
               : theme.kind === 'date-only' ? 'Date-only scope'
                 : 'Balance';
@@ -236,46 +249,219 @@ function renderAspectItem(a: NatalAspectReading): HTMLElement {
   return item;
 }
 
+function renderTransitThemeCard(theme: TransitTheme): HTMLElement {
+  const card = el('article', 'reading-card reading-theme-card reading-transit-card');
+  const badgeLabel = theme.kind === 'convergence-target' ? 'Converging target'
+    : theme.kind === 'convergence-house' ? 'House focus'
+      : theme.kind === 'retrograde-station' ? 'Retrograde / station'
+        : theme.kind === 'date-only' ? 'Date-only scope'
+          : 'Lunar context';
+  const top = el('div', 'reading-theme-head');
+  top.append(node('h4', theme.title), chip(badgeLabel, 'transit-kind-chip'));
+  card.append(
+    top,
+    el('p', 'reading-fact-line', `Calculated fact: ${theme.factsSummary}`),
+    el('p', 'reading-basis', `Traditional symbolism: ${theme.symbolismBasis}`),
+    el('p', 'reading-prose', theme.synthesis),
+  );
+  const cites = citationButtons(theme.citations);
+  if (cites) card.append(cites);
+  card.append(reflectionDisclosure(theme.reflection, `ttheme-${theme.id}`));
+  return card;
+}
+
+function renderTransitAspectCard(item: TransitAspectReading, displayZone: string): HTMLElement {
+  const li = el('li', `reading-card reading-aspect-card reading-transit-card tone-${item.tone}`);
+  li.dataset.windowKey = item.windowKey;
+  const meta = aspectMeta(item.aspect);
+  const head = el('div', 'reading-card-head');
+  const mark = el('span', 'reading-glyph glyph-transit', `${planetGlyphs[item.transitId]}︎`);
+  mark.setAttribute('aria-hidden', 'true');
+  const titleWrap = el('div', 'reading-card-title');
+  const heading = node('h4');
+  heading.tabIndex = -1;
+  const sym = el('span', `reading-aspect-sym tone-${item.tone}`, `${aspectSymbols[item.aspect]}︎`);
+  sym.setAttribute('aria-hidden', 'true');
+  heading.append(sym, ' ', item.title);
+  titleWrap.append(heading, el('p', 'reading-fact-line', item.factLine));
+  head.append(mark, titleWrap);
+  li.append(head);
+
+  const badges = el('div', 'reading-badges');
+  badges.append(
+    chip(meta.toneLabel, `chip-${item.tone}`),
+    chip(item.motionLabel, item.motion === 'exact' || item.motion === 'stationary' ? 'transit-kind-chip' : 'chip-quiet'),
+    chip(item.tightness === 'peak' ? 'Peak orb' : item.tightness === 'tight' ? 'Tight orb' : 'Active orb', 'chip-quiet'),
+  );
+  if (item.retrograde) badges.append(chip('℞ Retrograde', 'chip-retro'));
+  if (item.isAngleContact) badges.append(chip('Angle contact', 'transit-kind-chip'));
+  if (item.enrichment) {
+    const exactPassesCount = item.enrichment.passes.filter(p => p.state !== 'near-miss').length;
+    const isClipped = item.enrichment.clippedStart || item.enrichment.clippedEnd;
+    if (item.enrichment.isRetrogradeSeries && exactPassesCount > 1) {
+      badges.append(chip(
+        isClipped ? `${exactPassesCount}+ exact passes (window clipped)` : `${exactPassesCount} exact passes`,
+        'chip-retro',
+      ));
+    } else if (isClipped && exactPassesCount >= 1) {
+      badges.append(chip('Window clipped', 'chip-quiet'));
+    }
+  }
+  li.append(badges);
+
+  li.append(
+    el('p', 'reading-basis', `Traditional basis: ${item.symbolismBasis}`),
+    el('p', 'reading-prose', item.synthesis),
+  );
+
+  // Tier-2 exact passes, window bounds & "Jump to exact pass" buttons
+  if (item.enrichment) {
+    const en = item.enrichment;
+    const isClipped = en.clippedStart || en.clippedEnd;
+    const timingBox = el('div', 'transit-timing-box');
+    const winStart = en.startsAtEpochMs !== null ? formatLunarTimestamp(en.startsAtEpochMs, displayZone) : 'before search window';
+    const winEnd = en.endsAtEpochMs !== null ? formatLunarTimestamp(en.endsAtEpochMs, displayZone) : 'beyond search window';
+    timingBox.append(el('p', 'transit-window-line', `Within ${item.maxOrbDeg}° orb: ${winStart} → ${winEnd}`));
+
+    if (en.passes.length) {
+      const passList = el('ul', 'transit-pass-list');
+      for (const pass of en.passes) {
+        const row = el('li', 'transit-pass-row');
+        const label = pass.state === 'near-miss'
+          ? `Near miss (${pass.residualDeg !== null ? `${pass.residualDeg.toFixed(2)}°` : 'short'} from exact)`
+          : isClipped
+            ? (pass.totalExactPasses > 1 && pass.passNumber
+              ? `Observed pass ${pass.passNumber}${pass.retrograde ? ' · ℞' : ''}`
+              : `Observed exact pass${pass.retrograde ? ' · ℞' : ''}`)
+            : pass.totalExactPasses > 1 && pass.passNumber
+              ? `Exact pass ${pass.passNumber} of ${pass.totalExactPasses}${pass.retrograde ? ' · ℞' : ''}`
+              : `Exact pass${pass.retrograde ? ' · ℞' : ''}`;
+        const formatted = formatLunarTimestamp(pass.epochMs, displayZone);
+        const text = el('span', 'transit-pass-text');
+        text.append(node('strong', label), ` · ${formatted}`);
+        const jumpBtn = node('button', 'Jump to exact pass');
+        jumpBtn.type = 'button';
+        jumpBtn.className = 'transit-jump-btn';
+        jumpBtn.dataset.jumpEpochMs = String(pass.epochMs);
+        jumpBtn.dataset.jumpWindowKey = item.windowKey;
+        // WCAG 2.5.3: accessible name begins verbatim with visible text "Jump to exact pass".
+        jumpBtn.setAttribute('aria-label', `Jump to exact pass — ${label}, ${formatted}`);
+        row.append(text, jumpBtn);
+        passList.append(row);
+      }
+      timingBox.append(passList);
+      if (isClipped) {
+        timingBox.append(quiet('Search horizon clipped — additional passes may occur outside this window.'));
+      }
+    } else {
+      timingBox.append(quiet('No exact pass observed inside this search window.'));
+    }
+    li.append(timingBox);
+  }
+
+  const cites = citationButtons(item.citations);
+  if (cites) li.append(cites);
+  li.append(reflectionDisclosure(item.reflection, `tasp-${item.windowKey}`));
+  return li;
+}
+
+function renderTransitHouseCard(item: TransitHouseReading, displayZone: string): HTMLElement {
+  const li = el('li', 'reading-card reading-placement-card reading-transit-card');
+  const head = el('div', 'reading-card-head');
+  const mark = el('span', 'reading-glyph glyph-transit', `${planetGlyphs[item.planetId]}︎`);
+  mark.setAttribute('aria-hidden', 'true');
+  const titleWrap = el('div', 'reading-card-title');
+  titleWrap.append(node('h4', `Transit ${planetName(item.planetId)} in House ${item.houseNumber}`), el('p', 'reading-fact-line', item.factLine));
+  head.append(mark, titleWrap);
+  li.append(head);
+
+  if (item.span) {
+    const enter = item.span.enteredAtEpochMs !== null ? formatLunarTimestamp(item.span.enteredAtEpochMs, displayZone) : 'earlier than search window';
+    const exit = item.span.exitsAtEpochMs !== null ? formatLunarTimestamp(item.span.exitsAtEpochMs, displayZone) : 'beyond search window';
+    li.append(el('p', 'transit-window-line', `House ${item.houseNumber} stay: ${enter} → ${exit}${item.span.includesRetrogradeReentry ? ' (includes retrograde cusp crossing)' : ''}`));
+  }
+
+  li.append(
+    el('p', 'reading-basis', `Traditional basis: ${item.symbolismBasis}`),
+    el('p', 'reading-prose', item.synthesis),
+  );
+  const cites = citationButtons(item.citations);
+  if (cites) li.append(cites);
+  return li;
+}
+
+function renderSourcesDisclosure(sourceIds: readonly import('../knowledge').SourceId[]): HTMLElement {
+  const sources = node('details');
+  sources.className = 'sources';
+  sources.dataset.readingDetail = 'sources';
+  sources.append(node('summary', 'Sources and attribution'));
+  sources.append(quiet('All reading copy is original to Divine Orchestration and composed from the 49-entry local knowledge library.'));
+  const sourceList = node('ul');
+  for (const src of sourcesFor(sourceIds)) {
+    const li = node('li');
+    const title = src.url
+      ? Object.assign(node('a', src.title), { href: src.url, target: '_blank', rel: 'noopener noreferrer' })
+      : node('span', src.title);
+    li.append(title);
+    if (src.url) li.append(Object.assign(node('span', ' (opens in a new tab)'), { className: 'sr-only' }));
+    li.append(` · ${src.author}. ${src.used}`);
+    sourceList.append(li);
+  }
+  sources.append(sourceList);
+  return sources;
+}
+
 export function mountReadingPanel(hooks: ReadingPanelHooks, signal: AbortSignal): ReadingPanelController {
   const section = byId('personal-reading');
   const body = byId('personal-reading-body');
-  const trigger = byId<HTMLButtonElement>('interpret-birth-btn');
+  const heading = byId('reading-heading');
+  const eyebrow = byId('reading-eyebrow');
+  const natalBtn = byId<HTMLButtonElement>('interpret-birth-btn');
+  const transitBtn = byId<HTMLButtonElement>('interpret-transits-btn');
   const closeBtn = byId<HTMLButtonElement>('reading-close');
   const subtitle = byId('reading-subtitle');
   const statusEl = byId('reading-status');
-  let openState = false;
-  let current: NatalReading | null = null;
+  let mode: ReadingMode | null = null;
+  let lastOpenedBy: ReadingMode = 'natal';
+  let natalReading: NatalReading | null = null;
+  let transitReading: TransitReading | null = null;
   let lastRenderSignature = '';
+  let pendingJumpFocus: { windowKey: string | null; epochMs: number } | null = null;
 
   const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  function render() {
-    if (!current || !openState) return;
-    const reading = current;
-    const signature = JSON.stringify({
-      mode: reading.mode,
-      isDemo: reading.isDemo,
-      profileLabel: reading.profileLabel,
-      birthSummary: reading.birthSummary,
-      houseSystemLabel: reading.houseSystemLabel,
-      headline: reading.overview.headline,
-      facts: reading.overview.factsSummary,
-    });
-    if (signature === lastRenderSignature && body.childElementCount > 0) return;
+  function syncHeader() {
+    if (mode === 'transits') {
+      eyebrow.textContent = 'Transit interpretation · Time Machine · Local-first';
+      heading.textContent = 'Personal transit reading';
+      if (transitReading) {
+        subtitle.textContent = transitReading.isDemo
+          ? `Greenwich demonstration chart · ${transitReading.momentLabel}`
+          : transitReading.profileLabel
+            ? `Profile: ${transitReading.profileLabel} · ${transitReading.momentLabel}`
+            : `Calculated chart · ${transitReading.momentLabel}`;
+      }
+    } else {
+      eyebrow.textContent = 'Natal interpretation · Local-first';
+      heading.textContent = 'Personal birth-chart reading';
+      if (natalReading) {
+        subtitle.textContent = natalReading.isDemo
+          ? 'Greenwich demonstration chart · not your birth details'
+          : natalReading.profileLabel
+            ? `Profile: ${natalReading.profileLabel} · ${natalReading.birthSummary}`
+            : `Calculated chart · ${natalReading.birthSummary}`;
+      }
+    }
+    natalBtn.setAttribute('aria-expanded', String(mode === 'natal'));
+    natalBtn.setAttribute('aria-pressed', String(mode === 'natal'));
+    transitBtn.setAttribute('aria-expanded', String(mode === 'transits'));
+    transitBtn.setAttribute('aria-pressed', String(mode === 'transits'));
+    closeBtn.hidden = mode === null;
+  }
 
-    const openDetails = new Set(
-      [...body.querySelectorAll<HTMLDetailsElement>('details[open][data-reading-detail]')].map(d => d.dataset.readingDetail!),
-    );
-
-    subtitle.textContent = reading.isDemo
-      ? 'Greenwich demonstration chart · not your birth details'
-      : reading.profileLabel
-        ? `Profile: ${reading.profileLabel} · ${reading.birthSummary}`
-        : `Calculated chart · ${reading.birthSummary}`;
-
+  function renderNatal(reading: NatalReading): HTMLElement[] {
     const parts: HTMLElement[] = [];
 
-    // 1. Demo-chart honesty banner
     if (reading.isDemo) {
       const demo = el('div', 'reading-banner reading-banner-demo');
       const copy = el('p', '', 'You are reading the Greenwich demonstration chart (2000-01-01). Enter your own birth details or load a saved profile for a personal reading.');
@@ -287,19 +473,15 @@ export function mountReadingPanel(hooks: ReadingPanelHooks, signal: AbortSignal)
       parts.push(demo);
     }
 
-    // 2. Partial-data / omitted-factors & birth-time sensitivity notices
     if (reading.omittedNotes.length || reading.sensitivityNotes.length) {
       const notices = el('section', 'reading-banner reading-banner-caution');
       notices.setAttribute('aria-label', 'Chart scope and precision notes');
       const list = el('ul', 'meaning-list');
-      for (const note of [...reading.omittedNotes, ...reading.sensitivityNotes]) {
-        list.append(node('li', note));
-      }
+      for (const note of [...reading.omittedNotes, ...reading.sensitivityNotes]) list.append(node('li', note));
       notices.append(list);
       parts.push(notices);
     }
 
-    // 3. Overview
     const overview = el('section', 'reading-block reading-overview');
     overview.setAttribute('aria-labelledby', 'reading-overview-heading');
     const ovHead = el('div', 'reading-overview-head');
@@ -323,7 +505,6 @@ export function mountReadingPanel(hooks: ReadingPanelHooks, signal: AbortSignal)
     if (ovCites) overview.append(ovCites);
     parts.push(overview);
 
-    // 4. Core Trio & Chart Ruler
     const core = reading.coreTrio;
     if (core.sun || core.moon || core.ascendant || core.midheaven || core.chartRuler || core.natalMoonPhase) {
       const coreSection = el('section', 'reading-block');
@@ -371,7 +552,6 @@ export function mountReadingPanel(hooks: ReadingPanelHooks, signal: AbortSignal)
       parts.push(coreSection);
     }
 
-    // 5. Major Chart Themes
     if (reading.themes.length) {
       const themeSection = el('section', 'reading-block');
       themeSection.setAttribute('aria-labelledby', 'reading-themes-heading');
@@ -382,12 +562,8 @@ export function mountReadingPanel(hooks: ReadingPanelHooks, signal: AbortSignal)
       parts.push(themeSection);
     }
 
-    // 6. Element & Modality Balance
-    if (reading.balance) {
-      parts.push(renderBalance(reading.balance));
-    }
+    if (reading.balance) parts.push(renderBalance(reading.balance));
 
-    // 7. Planets in Signs & Houses
     if (reading.placements.length) {
       const placeSection = el('section', 'reading-block');
       placeSection.setAttribute('aria-labelledby', 'reading-placements-heading');
@@ -401,7 +577,6 @@ export function mountReadingPanel(hooks: ReadingPanelHooks, signal: AbortSignal)
       parts.push(placeSection);
     }
 
-    // 8. Key Natal Aspects
     if (reading.aspects.length) {
       const aspectSection = el('section', 'reading-block');
       aspectSection.setAttribute('aria-labelledby', 'reading-aspects-heading');
@@ -427,7 +602,6 @@ export function mountReadingPanel(hooks: ReadingPanelHooks, signal: AbortSignal)
       parts.push(aspectSection);
     }
 
-    // 9. Optional Reflection & AI Export Studio bridge + Sources
     const footer = el('section', 'reading-block reading-footer-block');
     footer.setAttribute('aria-labelledby', 'reading-reflect-heading');
     footer.append(Object.assign(node('h3', 'Reflection & further exploration'), { id: 'reading-reflect-heading' }));
@@ -445,82 +619,347 @@ export function mountReadingPanel(hooks: ReadingPanelHooks, signal: AbortSignal)
       quiet('Want to explore these verified natal facts further in your own AI chat? Nothing leaves your browser automatically.'),
       Object.assign(node('a', 'Continue in AI Export Studio →'), { href: '#export', className: 'button-link' }),
     );
-    footer.append(bridge);
-
-    const sources = node('details');
-    sources.className = 'sources';
-    sources.dataset.readingDetail = 'sources';
-    sources.append(node('summary', 'Sources and attribution'));
-    sources.append(quiet('All reading copy is original to Divine Orchestration and composed from the 49-entry local knowledge library.'));
-    const sourceList = node('ul');
-    for (const src of sourcesFor(reading.sources)) {
-      const li = node('li');
-      const title = src.url
-        ? Object.assign(node('a', src.title), { href: src.url, target: '_blank', rel: 'noopener noreferrer' })
-        : node('span', src.title);
-      li.append(title);
-      if (src.url) li.append(Object.assign(node('span', ' (opens in a new tab)'), { className: 'sr-only' }));
-      li.append(` · ${src.author}. ${src.used}`);
-      sourceList.append(li);
-    }
-    sources.append(sourceList);
-    footer.append(sources);
+    footer.append(bridge, renderSourcesDisclosure(reading.sources));
     parts.push(footer);
+    return parts;
+  }
 
+  function renderTransits(reading: TransitReading): HTMLElement[] {
+    const parts: HTMLElement[] = [];
+
+    if (reading.isDemo) {
+      const demo = el('div', 'reading-banner reading-banner-demo');
+      const copy = el('p', '', 'These transits are measured against the Greenwich demonstration chart (2000-01-01). Enter your own birth details or load a saved profile for your personal transits.');
+      const edit = node('button', 'Enter your birth details');
+      edit.type = 'button';
+      edit.className = 'secondary';
+      edit.dataset.readingEditBirth = 'true';
+      demo.append(copy, edit);
+      parts.push(demo);
+    }
+
+    if (reading.omittedNotes.length) {
+      const notices = el('section', 'reading-banner reading-banner-caution');
+      notices.setAttribute('aria-label', 'Transit scope notes');
+      const list = el('ul', 'meaning-list');
+      for (const note of reading.omittedNotes) list.append(node('li', note));
+      notices.append(list);
+      parts.push(notices);
+    }
+
+    // 1. Sky Weather Overview
+    const overview = el('section', 'reading-block reading-overview reading-overview-transit');
+    overview.setAttribute('aria-labelledby', 'reading-overview-heading');
+    const ovHead = el('div', 'reading-overview-head');
+    const enrichChip = reading.enrichmentState === 'loading'
+      ? chip('Calculating exact passes…', 'transit-enrich-chip')
+      : reading.enrichmentState === 'ready'
+        ? chip('Exact passes ready', 'transit-kind-chip')
+        : reading.enrichmentState === 'partial'
+          ? chip('Exact passes (partial window)', 'chip-quiet')
+          : null;
+    const headBadges = el('div', 'reading-badges');
+    headBadges.append(chip(reading.momentLabel, 'transit-kind-chip'));
+    if (enrichChip) headBadges.append(enrichChip);
+    ovHead.append(Object.assign(node('h3', reading.overview.headline), { id: 'reading-overview-heading' }), headBadges);
+    overview.append(
+      ovHead,
+      el('p', 'reading-fact-line', `Calculated sky facts: ${reading.overview.factsSummary}`),
+      el('p', 'reading-prose reading-overview-prose', reading.overview.synthesis),
+      el('p', 'quiet-note reading-epistemic', reading.overview.symbolismDisclaimer),
+    );
+    const ovCites = citationButtons(reading.overview.citations);
+    if (ovCites) overview.append(ovCites);
+    parts.push(overview);
+
+    // 2. Thematic Synthesis & Lunar Observatory tie-in
+    if (reading.themes.length || reading.lunarTieIn) {
+      const themeSection = el('section', 'reading-block');
+      themeSection.setAttribute('aria-labelledby', 'reading-transit-themes-heading');
+      themeSection.append(Object.assign(node('h3', 'Active transit themes & lunar context'), { id: 'reading-transit-themes-heading' }));
+      const grid = el('div', 'reading-grid');
+      for (const theme of reading.themes) grid.append(renderTransitThemeCard(theme));
+      if (reading.lunarTieIn) {
+        const l = reading.lunarTieIn;
+        grid.append(renderCoreCard(
+          `Lunar Observatory · ${l.phaseLabel}`, '◐', 'angle-glyph', l.factLine,
+          l.symbolismBasis, l.synthesis, l.reflection, l.citations, 'transit-lunar',
+        ));
+      }
+      themeSection.append(grid);
+      parts.push(themeSection);
+    }
+
+    // 3. Prioritized Timescale Buckets
+    const renderBucket = (
+      id: string,
+      title: string,
+      subtitleText: string,
+      items: readonly TransitAspectReading[],
+      collapseAfter = 6,
+    ) => {
+      if (!items.length) return;
+      const block = el('section', 'reading-block');
+      block.setAttribute('aria-labelledby', id);
+      block.append(Object.assign(node('h3', `${title} (${items.length})`), { id }), quiet(subtitleText));
+      const list = el('ul', 'reading-list');
+      for (const item of items.slice(0, collapseAfter)) list.append(renderTransitAspectCard(item, reading.displayZone));
+      block.append(list);
+      if (items.length > collapseAfter) {
+        const more = node('details');
+        more.className = 'reading-more-aspects';
+        more.dataset.readingDetail = `more-${id}`;
+        more.append(node('summary', `Show ${items.length - collapseAfter} more in ${title.toLowerCase()}`));
+        const moreList = el('ul', 'reading-list');
+        for (const item of items.slice(collapseAfter)) moreList.append(renderTransitAspectCard(item, reading.displayZone));
+        more.append(moreList);
+        block.append(more);
+      }
+      parts.push(block);
+    };
+
+    renderBucket(
+      'reading-transit-long',
+      'Long-term cycles',
+      'Jupiter, Saturn, Uranus, Neptune and Pluto — slow structural seasons spanning months to years (active within 3°–3.5° orb).',
+      reading.buckets.longTerm,
+    );
+    renderBucket(
+      'reading-transit-medium',
+      'Current medium-term transits',
+      'Mars, Sun, Venus and Mercury — active themes lasting days to weeks (active within 4° orb).',
+      reading.buckets.mediumTerm,
+    );
+    renderBucket(
+      'reading-transit-lunar',
+      'Brief lunar triggers',
+      'Transiting Moon contacts — fleeting hours-long shifts in tone (active within 5° orb; 4° for sextiles to match chart rules).',
+      reading.buckets.lunarBrief,
+      4,
+    );
+
+    if (!reading.allAspects.length && reading.mode !== 'unavailable') {
+      const quietNote = el('section', 'reading-block');
+      quietNote.append(
+        node('h3', 'No tight planetary transits right now'),
+        quiet(
+          reading.wideChartAspectsCount > 0
+            ? `${reading.wideChartAspectsCount} wider background ${reading.wideChartAspectsCount === 1 ? 'aspect is' : 'aspects are'} listed in the Aspects table below, outside the tighter active transit orbs.`
+            : 'Move the Time Machine or search the Events tab to inspect upcoming exact contacts.',
+        ),
+      );
+      parts.push(quietNote);
+    }
+
+    // 4. Transiting Planets Through Natal Houses
+    if (reading.houseTransits.length) {
+      const houseBlock = el('section', 'reading-block');
+      houseBlock.setAttribute('aria-labelledby', 'reading-transit-houses-heading');
+      houseBlock.append(
+        Object.assign(node('h3', `Transiting planets through your ${reading.houseSystemLabel} houses`), { id: 'reading-transit-houses-heading' }),
+        quiet('Shows which natal life arenas slower and personal transiting planets are currently travelling through.'),
+      );
+      const list = el('ul', 'reading-list');
+      for (const ht of reading.houseTransits.slice(0, 6)) list.append(renderTransitHouseCard(ht, reading.displayZone));
+      houseBlock.append(list);
+      if (reading.houseTransits.length > 6) {
+        const more = node('details');
+        more.className = 'reading-more-aspects';
+        more.dataset.readingDetail = 'more-house-transits';
+        more.append(node('summary', `Show ${reading.houseTransits.length - 6} faster inner-planet house transits`));
+        const moreList = el('ul', 'reading-list');
+        for (const ht of reading.houseTransits.slice(6)) moreList.append(renderTransitHouseCard(ht, reading.displayZone));
+        more.append(moreList);
+        houseBlock.append(more);
+      }
+      parts.push(houseBlock);
+    }
+
+    // 5. Reflection, Learn citations, Events & AI Export Studio bridge
+    const footer = el('section', 'reading-block reading-footer-block');
+    footer.setAttribute('aria-labelledby', 'reading-reflect-heading');
+    footer.append(Object.assign(node('h3', 'Reflection, Learn & further exploration'), { id: 'reading-reflect-heading' }));
+    if (reading.reflections.length) {
+      const list = el('ul', 'meaning-list reading-reflection-list');
+      for (const r of reading.reflections) {
+        const li = node('li');
+        li.append(node('strong', `${r.topic}: `), r.question);
+        list.append(li);
+      }
+      footer.append(list);
+    }
+    const learnRow = el('div', 'reading-learn-links');
+    learnRow.append(
+      el('span', 'quiet-note', 'Learn concepts:'),
+      Object.assign(node('a', 'Transits'), { href: learnHref('concept/transits'), className: 'learn-open' }),
+      Object.assign(node('a', 'Retrograde'), { href: learnHref('concept/retrograde'), className: 'learn-open' }),
+      Object.assign(node('a', 'Orb'), { href: learnHref('concept/orb'), className: 'learn-open' }),
+      Object.assign(node('a', 'Moon phases'), { href: learnHref('concept/moon-phases'), className: 'learn-open' }),
+    );
+    footer.append(learnRow);
+
+    const bridge = el('div', 'reading-export-bridge');
+    bridge.append(
+      quiet('Browse a 366-day transit calendar in Events, or prepare a privacy-redacted snapshot in AI Export Studio.'),
+      Object.assign(node('a', 'Open Events calendar'), { href: '#events', className: 'button-link' }),
+      Object.assign(node('a', 'Continue in AI Export Studio →'), { href: '#export', className: 'button-link' }),
+    );
+    footer.append(bridge, renderSourcesDisclosure(reading.sources));
+    parts.push(footer);
+    return parts;
+  }
+
+  function render() {
+    syncHeader();
+    if (!mode) return;
+    let signature = '';
+    let parts: HTMLElement[] = [];
+
+    if (mode === 'natal') {
+      if (!natalReading) return;
+      signature = JSON.stringify({
+        mode: 'natal',
+        readingMode: natalReading.mode,
+        isDemo: natalReading.isDemo,
+        profileLabel: natalReading.profileLabel,
+        birthSummary: natalReading.birthSummary,
+        houseSystemLabel: natalReading.houseSystemLabel,
+        headline: natalReading.overview.headline,
+        facts: natalReading.overview.factsSummary,
+      });
+      if (signature === lastRenderSignature && body.childElementCount > 0) return;
+      parts = renderNatal(natalReading);
+    } else {
+      if (!transitReading) return;
+      signature = JSON.stringify({
+        mode: 'transits',
+        readingMode: transitReading.mode,
+        isDemo: transitReading.isDemo,
+        profileLabel: transitReading.profileLabel,
+        momentLabel: transitReading.momentLabel,
+        displayZone: transitReading.displayZone,
+        enrichmentState: transitReading.enrichmentState,
+        headline: transitReading.overview.headline,
+        facts: transitReading.overview.factsSummary,
+        passCount: transitReading.allAspects.reduce((sum, a) => sum + (a.enrichment?.passes.length ?? 0), 0),
+        spanCount: transitReading.houseTransits.filter(h => h.span).length,
+      });
+      if (signature === lastRenderSignature && body.childElementCount > 0) return;
+      parts = renderTransits(transitReading);
+    }
+
+    const activeEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const hadFocusInBody = Boolean(activeEl && body.contains(activeEl));
+    const focusedWindowKey = activeEl?.dataset.jumpWindowKey
+      ?? activeEl?.closest<HTMLElement>('[data-window-key]')?.dataset.windowKey
+      ?? null;
+    const focusedJumpEpoch = activeEl?.dataset.jumpEpochMs ?? null;
+    const focusedSelectKey = activeEl?.dataset.readingSelect ?? null;
+
+    const openDetails = new Set(
+      [...body.querySelectorAll<HTMLDetailsElement>('details[open][data-reading-detail]')].map(d => d.dataset.readingDetail!),
+    );
     body.replaceChildren(...parts);
     for (const key of openDetails) {
       body.querySelector<HTMLDetailsElement>(`details[data-reading-detail="${CSS.escape(key)}"]`)?.setAttribute('open', '');
     }
     lastRenderSignature = signature;
+
+    // Preserve meaningful keyboard focus across reading re-renders (e.g. after "Jump to exact pass")
+    // without moving scroll position or leaving focus on document.body.
+    const wantsJumpRestore = pendingJumpFocus !== null
+      && (hadFocusInBody || activeEl === heading || activeEl === document.body || activeEl === null);
+    if (wantsJumpRestore && pendingJumpFocus) {
+      const { windowKey, epochMs } = pendingJumpFocus;
+      let targetEl: HTMLElement | null = null;
+      if (windowKey) {
+        targetEl = body.querySelector<HTMLElement>(
+          `button[data-jump-window-key="${CSS.escape(windowKey)}"][data-jump-epoch-ms="${CSS.escape(String(epochMs))}"]`,
+        );
+        if (targetEl) {
+          pendingJumpFocus = null;
+        } else {
+          // Tier-2 enrichment may still be loading: focus the card heading while waiting.
+          targetEl = body.querySelector<HTMLElement>(`[data-window-key="${CSS.escape(windowKey)}"] h4`);
+          if (transitReading?.enrichmentState === 'ready' || transitReading?.enrichmentState === 'partial') {
+            pendingJumpFocus = null;
+          }
+        }
+      } else {
+        pendingJumpFocus = null;
+      }
+      (targetEl ?? heading).focus({ preventScroll: true });
+    } else if (hadFocusInBody) {
+      let restoreEl: HTMLElement | null = null;
+      if (focusedWindowKey && focusedJumpEpoch) {
+        restoreEl = body.querySelector<HTMLElement>(
+          `button[data-jump-window-key="${CSS.escape(focusedWindowKey)}"][data-jump-epoch-ms="${CSS.escape(focusedJumpEpoch)}"]`,
+        ) ?? body.querySelector<HTMLElement>(`[data-window-key="${CSS.escape(focusedWindowKey)}"] h4`);
+      } else if (focusedSelectKey) {
+        restoreEl = body.querySelector<HTMLElement>(`button[data-reading-select="${CSS.escape(focusedSelectKey)}"]`);
+      } else if (focusedWindowKey) {
+        restoreEl = body.querySelector<HTMLElement>(`[data-window-key="${CSS.escape(focusedWindowKey)}"] h4`);
+      }
+      (restoreEl ?? heading).focus({ preventScroll: true });
+    }
   }
 
-  function syncSubtitle() {
-    if (!current) return;
-    subtitle.textContent = current.isDemo
-      ? 'Greenwich demonstration chart · not your birth details'
-      : current.profileLabel
-        ? `Profile: ${current.profileLabel} · ${current.birthSummary}`
-        : `Calculated chart · ${current.birthSummary}`;
-  }
-
-  function setOpen(next: boolean, moveFocus = false) {
-    openState = next;
-    body.hidden = !next;
-    closeBtn.hidden = !next;
-    trigger.hidden = next;
-    trigger.setAttribute('aria-expanded', String(next));
-    syncSubtitle();
+  function setMode(next: ReadingMode | null, moveFocus = false) {
+    const changed = mode !== next;
+    mode = next;
+    if (next) lastOpenedBy = next;
+    body.hidden = next === null;
+    if (changed) lastRenderSignature = '';
+    syncHeader();
     if (next) {
       render();
-      statusEl.textContent = current
-        ? `Personal birth-chart reading open: ${current.overview.headline}.`
-        : 'Personal birth-chart reading open.';
+      statusEl.textContent = next === 'natal'
+        ? (natalReading ? `Personal birth-chart reading open: ${natalReading.overview.headline}.` : 'Personal birth-chart reading open.')
+        : (transitReading ? `Personal transit reading open for ${transitReading.momentLabel}: ${transitReading.overview.headline}.` : 'Personal transit reading open.');
       if (moveFocus) {
         section.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
-        byId('reading-heading').focus({ preventScroll: true });
+        heading.focus({ preventScroll: true });
       }
     } else {
       statusEl.textContent = '';
     }
+    if (changed) hooks.onModeChange?.(next);
   }
 
-  trigger.addEventListener('click', () => {
-    setOpen(true, true);
+  natalBtn.addEventListener('click', () => setMode('natal', true), { signal });
+  transitBtn.addEventListener('click', () => setMode('transits', true), { signal });
+  closeBtn.addEventListener('click', () => {
+    pendingJumpFocus = null;
+    setMode(null);
+    (lastOpenedBy === 'transits' ? transitBtn : natalBtn).focus({ preventScroll: true });
   }, { signal });
 
-  closeBtn.addEventListener('click', () => {
-    setOpen(false);
-    trigger.focus({ preventScroll: true });
+  document.addEventListener('focusin', event => {
+    if (pendingJumpFocus && event.target instanceof Node && !section.contains(event.target)) {
+      pendingJumpFocus = null;
+    }
   }, { signal });
 
   body.addEventListener('click', event => {
     const target = event.target as HTMLElement;
     if (target.closest('[data-reading-edit-birth]')) {
+      pendingJumpFocus = null;
       hooks.onEditBirth();
+      return;
+    }
+    const jump = target.closest<HTMLElement>('[data-jump-epoch-ms]');
+    if (jump?.dataset.jumpEpochMs) {
+      const epochMs = Number(jump.dataset.jumpEpochMs);
+      if (Number.isFinite(epochMs)) {
+        pendingJumpFocus = { windowKey: jump.dataset.jumpWindowKey ?? null, epochMs };
+        hooks.onJumpToEpoch(epochMs);
+        statusEl.textContent = 'Time Machine moved to exact transit pass.';
+      }
       return;
     }
     const cite = target.closest<HTMLElement>('[data-reading-select]');
     if (cite?.dataset.readingSelect) {
+      pendingJumpFocus = null;
       hooks.onSelectKey(cite.dataset.readingSelect);
       const inspection = document.getElementById('inspection');
       inspection?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'nearest' });
@@ -529,16 +968,27 @@ export function mountReadingPanel(hooks: ReadingPanelHooks, signal: AbortSignal)
 
   return {
     update(reading: NatalReading) {
-      current = reading;
-      lastRenderSignature = '';
-      syncSubtitle();
-      if (openState) {
+      natalReading = reading;
+      if (mode === 'natal') {
+        lastRenderSignature = '';
         render();
         statusEl.textContent = `Birth-chart reading updated: ${reading.overview.headline}.`;
+      } else {
+        syncHeader();
       }
     },
-    open(moveFocus = true) { setOpen(true, moveFocus); },
-    close() { setOpen(false); },
-    isOpen: () => openState,
+    updateTransits(reading: TransitReading) {
+      transitReading = reading;
+      if (mode === 'transits') {
+        lastRenderSignature = '';
+        render();
+      } else {
+        syncHeader();
+      }
+    },
+    open(moveFocus = true, targetMode: ReadingMode = 'natal') { setMode(targetMode, moveFocus); },
+    close() { setMode(null); },
+    isOpen: () => mode !== null,
+    activeMode: () => mode,
   };
 }

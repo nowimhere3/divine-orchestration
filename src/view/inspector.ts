@@ -1,7 +1,7 @@
 import type { AspectFact } from '../domain/aspects';
 import type { HouseFacts, PlanetId, PlanetPosition } from '../domain/chart';
-import { inspectorPersonalNatal } from '../interpret';
-import type { InspectorPersonalNote, NatalReading } from '../interpret';
+import { inspectorPersonalNatal, inspectorPersonalTransit } from '../interpret';
+import type { InspectorPersonalNote, NatalReading, TransitReading } from '../interpret';
 import { aspectEntry, bodyEntry, conceptEntry, entryById, entryForRef, houseEntry, parseElementKey, signEntry, sourcesFor } from '../knowledge';
 import type { ElementRef, Entry } from '../knowledge';
 import { formatLunarTimestamp } from '../lunar';
@@ -65,6 +65,8 @@ export interface InspectorModel {
   lunar?: InspectorLunarModel;
   /** Personalized natal interpretation for concise "In this chart" context. */
   natalReading?: NatalReading;
+  /** Personalized transit interpretation for concise "In these transits" context. */
+  transitReading?: TransitReading;
 }
 
 export const glyph = (id: PlanetId, layer: string) => {
@@ -381,10 +383,10 @@ function renderLunarInspectionBlock(layer: 'natal' | 'transit', info: InspectorL
   return [section];
 }
 
-function personalBlock(note: InspectorPersonalNote | null): HTMLElement[] {
+function personalBlock(note: InspectorPersonalNote | null, className = 'inspect-personal'): HTMLElement[] {
   if (!note) return [];
   const box = node('section');
-  box.className = 'inspect-personal';
+  box.className = className;
   box.setAttribute('aria-label', note.heading);
   const top = node('div');
   top.className = 'inspect-personal-head';
@@ -432,7 +434,9 @@ function planetView(model: InspectorModel, layer: 'natal' | 'transit', id: Plane
   const lunarBlocks = id === 'moon'
     ? renderLunarInspectionBlock(layer, layer === 'natal' ? model.lunar?.natal : model.lunar?.transit)
     : [];
-  const personal = layer === 'natal' ? personalBlock(inspectorPersonalNatal(model.natalReading, model.key)) : [];
+  const personal = layer === 'natal'
+    ? personalBlock(inspectorPersonalNatal(model.natalReading, model.key), 'inspect-personal')
+    : personalBlock(inspectorPersonalTransit(model.transitReading, model.key), 'inspect-transit-personal');
   const related = relationList('Aspects', model.related, fact => `to ${refLabel(pointKey(fact.from) === model.key ? fact.to : fact.from)}`, 'No major aspects within orb.');
   return [head, sectionNav(), ...(entry ? [meaning(entry, personal)] : []),
     facts(layer === 'natal' ? natalContext(model) : `${momentContext(model)} House numbers are the natal houses.`, [motion, details(rows), ...lunarBlocks, explore, related])];
@@ -467,7 +471,9 @@ function aspectView(model: InspectorModel, fact: AspectFact) {
   const everyOne = `All ${aspectEntry(fact.aspect)?.name.toLowerCase()}s in this chart`;
   all.append(jump([everyOne], `aspect/${fact.aspect}`, everyOne, 'concept-link'));
   const crossing = fact.from.chartId !== fact.to.chartId;
-  const personal = !crossing ? personalBlock(inspectorPersonalNatal(model.natalReading, fact.id)) : [];
+  const personal = !crossing
+    ? personalBlock(inspectorPersonalNatal(model.natalReading, fact.id), 'inspect-personal')
+    : personalBlock(inspectorPersonalTransit(model.transitReading, fact.id), 'inspect-transit-personal');
   return [pair, title, fit, sectionNav(), ...(entry ? [meaning(entry, [...personal, themes])] : []),
     facts(crossing ? `${momentContext(model)} A transiting planet against a natal planet.` : `${natalContext(model)} Both planets are natal.`, [details([
       ['Separation', degrees(fact.separationDeg)], ['Exact angle', degrees(fact.exactAngleDeg)],

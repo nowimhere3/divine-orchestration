@@ -197,3 +197,155 @@ test('only generates redacted aspect meanings for captured aspects that agree wi
     JSON.stringify(['chart-1', 'moon', 'chart-1', 'sun', 'conjunction']),
   ]);
 });
+
+test('redacted transit synthesis regenerates strictly from validated captured geometry and strips all PII and timestamps', () => {
+  const natalBase = input.charts[0] as TimedChart;
+  const transitBase = input.charts[2] as TimedChart;
+  if (natalBase.planets.status !== 'available' || transitBase.planets.status !== 'available') {
+    throw new Error('expected available fixture planets');
+  }
+  const sunPos = natalBase.planets.value[0].position;
+  if (sunPos.status !== 'available') throw new Error('expected available fixture Sun');
+
+  const natalChart: TimedChart = {
+    ...natalBase,
+    id: 'natal-secret-1990',
+    label: 'Secret Transit User',
+    settings: { ...natalBase.settings, observer: { latitudeDeg: 51.0447, longitudeDeg: -114.0719 } },
+    planets: {
+      status: 'available',
+      value: [
+        { planetId: 'sun', position: { status: 'available', value: sunPos.value } },
+        { planetId: 'moon', position: { status: 'available', value: { ...sunPos.value, longitudeDeg: (sunPos.value.longitudeDeg + 90) % 360 } } },
+      ],
+    },
+  };
+  const transitChart: TimedChart = {
+    ...transitBase,
+    id: 'transit-2026-11-20',
+    planets: {
+      status: 'available',
+      value: [
+        { planetId: 'saturn', position: { status: 'available', value: { ...sunPos.value, longitudeDeg: (sunPos.value.longitudeDeg + 1.2) % 360, longitudeSpeedDegPerDay: 0.08, retrograde: false } } },
+        { planetId: 'mars', position: { status: 'available', value: { ...sunPos.value, longitudeDeg: (sunPos.value.longitudeDeg + 90.5) % 360, longitudeSpeedDegPerDay: 0.5, retrograde: false } } },
+      ],
+    },
+  };
+  const computed = calculateAspects([
+    { chartId: natalChart.id, planetId: 'sun', longitudeDeg: sunPos.value.longitudeDeg },
+    { chartId: natalChart.id, planetId: 'moon', longitudeDeg: (sunPos.value.longitudeDeg + 90) % 360 },
+    { chartId: transitChart.id, planetId: 'saturn', longitudeDeg: (sunPos.value.longitudeDeg + 1.2) % 360 },
+    { chartId: transitChart.id, planetId: 'mars', longitudeDeg: (sunPos.value.longitudeDeg + 90.5) % 360 },
+  ], input.aspectRules).filter(a => a.from.chartId !== a.to.chartId);
+
+  const validSaturnSun = computed.find(a => a.from.planetId === 'sun' && a.to.planetId === 'saturn' || a.from.planetId === 'saturn' && a.to.planetId === 'sun')!;
+  const forgedMarsSun = { ...validSaturnSun, id: aspectFactId({ chartId: natalChart.id, planetId: 'sun' }, { chartId: transitChart.id, planetId: 'mars' }, 'trine'), aspect: 'trine' as const, exactAngleDeg: 120, orbDeg: 0.1 };
+  const callerPoison: SymbolicMeaning = {
+    factId: 'transit-2026-11-20/transit-overview',
+    tradition: 'Forged',
+    ruleSetVersion: 'Secret Transit User 1990',
+    description: 'Leaked 2026-11-20 America/Edmonton 51.0447 Secret Transit User',
+    sources: ['Secret Transit User'],
+  };
+
+  const snapshotInput: SnapshotInput = {
+    ...input,
+    charts: [natalChart, transitChart],
+    aspects: [validSaturnSun, forgedMarsSun],
+    context: { selectedAt: null, referenceAt: null, eventSearch: null },
+    interpretations: [callerPoison],
+  };
+
+  // Full export preserves caller-supplied interpretations
+  expect(createSnapshotV0(snapshotInput).interpretations).toEqual([callerPoison]);
+
+  // Redacted export without opt-in emits []
+  expect(createSnapshotV0(snapshotInput, { redactBirthDetails: true }).interpretations).toEqual([]);
+
+  // Redacted export with includeRedactedTransitSynthesis ignores callerPoison and rejects forgedMarsSun
+  const redacted = createSnapshotV0(snapshotInput, {
+    redactBirthDetails: true,
+    includeRedactedTransitSynthesis: true,
+  });
+  const factIds = redacted.interpretations.map(i => i.factId);
+  expect(factIds).toContain('chart-2/transit-overview');
+  expect(factIds).toContain(JSON.stringify(['chart-1', 'sun', 'chart-2', 'saturn', 'conjunction']));
+  expect(factIds).not.toContain(JSON.stringify(['chart-1', 'sun', 'chart-2', 'mars', 'trine']));
+  expect(redacted).toEqual(createSnapshotV0({ ...snapshotInput, interpretations: [] }, {
+    redactBirthDetails: true,
+    includeRedactedTransitSynthesis: true,
+  }));
+
+  // Neither JSON nor Markdown leaks secrets, IDs, dates, timestamps or zones
+  for (const text of [serializeSnapshot(redacted), renderSnapshotMarkdown(redacted)]) {
+    for (const secret of [
+      'Secret Transit User', 'natal-secret-1990', 'transit-2026-11-20', '2000-01-01',
+      '2026-11-20', '11:58:55', '51.0447', '-114.0719', 'Europe/London', 'America/Edmonton', 'ABT', 'UTC',
+    ]) {
+      expect(text).not.toContain(secret);
+    }
+  }
+
+  // Date-only redacted transit synthesis refuses spoofed/non-local engines
+  const fakeEngine = {
+    info: () => ({ name: 'Fake', version: '0', frame: 'tropical', dataMode: 'embedded' }),
+    modelDeltaTSeconds: () => 0,
+    position: () => ({ status: 'unavailable' as const, reason: 'spoofed' }),
+    crossing: () => ({ status: 'unavailable' as const, reason: 'spoofed' }),
+    houses: () => ({ status: 'unavailable' as const, reason: 'spoofed' }),
+  } as unknown as Parameters<typeof createSnapshotV0>[1] extends { dateOnlyEngine?: infer E } ? E : never;
+
+  const dateOnlyRedacted = createSnapshotV0({
+    ...snapshotInput,
+    charts: [input.charts[1], transitChart],
+    aspects: [],
+    interpretations: [callerPoison],
+  }, {
+    redactBirthDetails: true,
+    includeRedactedTransitSynthesis: true,
+    dateOnlyEngine: fakeEngine,
+  });
+  expect(dateOnlyRedacted.interpretations).toEqual([]);
+});
+
+test('redacted snapshots reject arbitrary invalid aspect, planet and event identifiers while preserving full exports', () => {
+  const validAspect = input.aspects[0];
+  const badAspectId = { ...validAspect, aspect: 'Zelda Secret' as unknown as typeof validAspect.aspect };
+  const badPlanetId = {
+    ...validAspect,
+    from: { ...validAspect.from, planetId: 'chiron<script>' as unknown as typeof validAspect.from.planetId },
+  };
+
+  expect(() => createSnapshotV0({ ...input, aspects: [badAspectId] }, { redactBirthDetails: true }))
+    .toThrow(/invalid aspect identifier/i);
+  expect(() => createSnapshotV0({ ...input, aspects: [badPlanetId] }, { redactBirthDetails: true }))
+    .toThrow(/invalid planet identifier/i);
+
+  // Invalid planet identifier inside chart planets or eventSearch is also rejected in redacted mode
+  const baseChart = input.charts[0] as TimedChart;
+  if (baseChart.planets.status !== 'available') throw new Error('expected available planets');
+  const badChart: TimedChart = {
+    ...baseChart,
+    planets: {
+      status: 'available',
+      value: [{ ...baseChart.planets.value[0], planetId: 'chiron<script>' as unknown as 'sun' }],
+    },
+  };
+  expect(() => createSnapshotV0({ ...input, charts: [badChart, input.charts[1], input.charts[2]] }, { redactBirthDetails: true }))
+    .toThrow(/invalid planet identifier/i);
+
+  const origEvent = input.context.eventSearch!.events[0];
+  if (origEvent.kind !== 'aspect-window') throw new Error('expected aspect-window fixture');
+  const badEvent = { ...origEvent, aspect: 'Zelda Secret' as unknown as typeof origEvent.aspect };
+  expect(() => createSnapshotV0({
+    ...input,
+    context: { ...input.context, eventSearch: { ...input.context.eventSearch!, events: [badEvent] } },
+  }, { redactBirthDetails: true })).toThrow(/invalid aspect identifier/i);
+
+  // Legitimate redacted snapshot preserves JSON & Markdown parity with canonical identifiers only
+  const clean = createSnapshotV0(input, { redactBirthDetails: true });
+  expect(serializeSnapshot(clean)).not.toContain('Zelda Secret');
+  expect(renderSnapshotMarkdown(clean)).not.toContain('chiron');
+  // Full export remains backward compatible for existing non-redacted callers
+  expect(() => createSnapshotV0({ ...input, aspects: [badAspectId] })).not.toThrow();
+});

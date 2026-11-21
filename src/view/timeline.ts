@@ -242,4 +242,11 @@ export function bindTimeline(change: (date: string, time: string, label: string,
     menu.value = 'utc';
     applyZone();
   }
+  return {
+    /** Programmatically moves the Time Machine to an exact UTC epoch millisecond (recentering the scrub window). */
+    setInstant(epochMs: number) {
+      if (!Number.isFinite(epochMs)) return;
+      display(Math.round(epochMs / minuteMs) * minuteMs, true);
+    },
+  };
 }

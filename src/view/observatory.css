@@ -1202,6 +1202,20 @@ input[aria-invalid='true'] { border-color: var(--rose); box-shadow: 0 0 0 1px va
   color: var(--on-accent);
   border-color: transparent;
 }
+.reading-trigger-transit {
+  background: #f2c47e1a;
+  border-color: #f2c47e8c;
+  color: var(--gold);
+}
+.reading-trigger-transit:hover {
+  background: #f2c47e2c;
+  border-color: var(--gold);
+}
+.reading-trigger-transit[aria-expanded='true'] {
+  background: var(--gold);
+  color: var(--on-accent);
+  border-color: transparent;
+}
 .reading-panel {
   margin-top: var(--space-4);
   display: grid;
@@ -1580,6 +1594,105 @@ input[aria-invalid='true'] { border-color: var(--rose); box-shadow: 0 0 0 1px va
   gap: .35rem;
 }
 
+/* Personalized Transit Interpretation & Inspector "In these transits" (U5B) */
+.reading-overview-transit {
+  border-color: #f2c47e5c;
+  background: linear-gradient(155deg, #271f1db8 0%, #141123cc 100%);
+}
+.reading-overview-transit .reading-overview-head h3 {
+  color: var(--gold);
+}
+.reading-glyph.glyph-transit {
+  border-color: #f2c47e99;
+  background: #f2c47e14;
+  color: var(--gold);
+}
+.transit-kind-chip {
+  color: var(--gold);
+  border-color: #f2c47e66;
+  background: #f2c47e14;
+}
+.transit-enrich-chip {
+  color: var(--muted);
+  border-color: var(--line-strong);
+  background: #ffffff08;
+}
+.transit-timing-box {
+  padding: .6rem .75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #0f0c1bb3;
+  display: grid;
+  gap: .45rem;
+}
+.transit-window-line {
+  margin: 0;
+  font-size: .78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+.transit-pass-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: .4rem;
+}
+.transit-pass-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .4rem .6rem;
+  font-size: .8rem;
+  font-variant-numeric: tabular-nums;
+}
+.transit-pass-text strong {
+  color: var(--gold);
+}
+.transit-jump-btn {
+  min-height: 2.75rem;
+  padding: .25rem .75rem;
+  border-radius: 999px;
+  border-color: #f2c47e77;
+  background: #f2c47e16;
+  color: var(--gold);
+  font-size: .78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.transit-jump-btn:hover {
+  background: #f2c47e2c;
+  border-color: var(--gold);
+}
+.reading-learn-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem;
+}
+.reading-learn-links .learn-open {
+  margin: 0;
+}
+.inspect-transit-personal {
+  margin: .65rem 0 .85rem;
+  padding: .75rem .85rem;
+  border: 1px solid #f2c47e66;
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: #f2c47e10;
+  display: grid;
+  gap: .45rem;
+}
+.inspect-transit-personal .inspect-personal-head h4 {
+  margin: 0;
+  font-size: .78rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
 @media (max-width: 44rem) {
   .reading-panel {
     margin-top: var(--space-3);
@@ -1589,9 +1702,13 @@ input[aria-invalid='true'] { border-color: var(--rose); box-shadow: 0 0 0 1px va
   .balance-grid {
     grid-template-columns: 1fr;
   }
+  .reading-panel-actions {
+    width: 100%;
+  }
   .reading-panel-head button,
   .reading-banner button,
-  .reading-export-bridge .button-link {
+  .reading-export-bridge .button-link,
+  .transit-jump-btn {
     width: 100%;
     justify-content: center;
     text-align: center;

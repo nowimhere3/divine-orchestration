@@ -13,8 +13,10 @@ import { aspectTable, houseName, houseTables, node, planetTable, unavailableText
 import { regionMembers, renderInspection } from './inspector';
 import type { InspectorLunarLayer, InspectorLunarModel } from './inspector';
 import { parseElementKey } from '../knowledge';
-import { interpretNatalChart } from '../interpret';
-import type { NatalReading } from '../interpret';
+import { buildTransitEnrichmentRequest, interpretNatalChart, interpretTransits } from '../interpret';
+import type { NatalReading, TransitEnrichmentData, TransitEnrichmentState, TransitReading } from '../interpret';
+import { startTransitEnrichment } from '../search/client';
+import type { TransitEnrichmentJob } from '../search/client';
 import {
   calculateDateOnlyMoonSummary,
   calculateLunarCycle,
@@ -93,6 +95,13 @@ export function mountObservatory(engine: EphemeraEngine) {
     missingObserverReason: null, timeZone: 'UTC', dateOnlySummary: null,
   };
   let natalReading: NatalReading | undefined;
+  let transitReading: TransitReading | undefined;
+  let transitEnrichment: TransitEnrichmentData | null = null;
+  let transitEnrichmentState: TransitEnrichmentState = 'idle';
+  let enrichmentJob: TransitEnrichmentJob | undefined;
+  let enrichmentTimer: ReturnType<typeof setTimeout> | undefined;
+  let enrichmentReqId = 0;
+  const enrichmentCache = new Map<string, TransitEnrichmentData>();
   let transitChart: TimedChart | null = null;
   let provenance: SnapshotInput['engine'] = null;
   let birthEdited = false;
@@ -222,18 +231,25 @@ export function mountObservatory(engine: EphemeraEngine) {
     if (!natal || !transitChart) return null;
     const { utc, jdUt, jdTt } = transitChart.time;
     const selectedAt = { utc, jdUt, jdTt };
-    return { targets: targets(), natalReading, input: {
+    return { targets: targets(), natalReading, transitReading, input: {
       engine: provenance, aspectRules: createAspectRuleSet(), charts: [natal, transitChart],
       aspects: [...birthAspects, ...transitAspects],
       context: { selectedAt, referenceAt: selectedAt, eventSearch: null },
     } };
   }, signal, () => birthEdited && (attemptFailed || !birthDialog.open)
     ? 'Export is blocked because your new birth details have not been calculated. Open Edit birth details and calculate first.' : '');
+  let timelineControl: { setInstant(epochMs: number): void } | undefined;
   const readingPanel = mountReadingPanel({
     onSelectKey: select,
     onEditBirth: () => {
       if (!birthDialog.open) birthDialog.showModal();
       byId('birth-date').focus();
+    },
+    onJumpToEpoch: epochMs => {
+      timelineControl?.setInstant(epochMs);
+    },
+    onModeChange: activeMode => {
+      if (activeMode === 'transits') scheduleTransitEnrichment();
     },
   }, signal);
   const lunarCard = mountLunarCard(engine, {
@@ -266,8 +282,105 @@ export function mountObservatory(engine: EphemeraEngine) {
   });
 
   const houses = () => natal?.houses.status === 'available' ? natal.houses.value : null;
+
+  function cancelTransitEnrichment() {
+    if (enrichmentTimer !== undefined) {
+      clearTimeout(enrichmentTimer);
+      enrichmentTimer = undefined;
+    }
+    enrichmentJob?.cancel();
+    enrichmentJob = undefined;
+    enrichmentReqId += 1;
+  }
+
+  function transitSignature(): string {
+    const birthKey = natal ? JSON.stringify([natal.time.input, natal.settings.observer, natal.settings.requestedHouseSystem]) : '';
+    const hourKey = selectedTt !== null ? Math.round(selectedTt * 24) : 'none';
+    return `${birthKey}|${hourKey}`;
+  }
+
+  function computeTransitReadingSync() {
+    if (!natal) return;
+    const sig = transitSignature();
+    const cached = enrichmentCache.get(sig) ?? null;
+    transitEnrichment = cached;
+    transitEnrichmentState = cached ? cached.status : 'idle';
+    const snap = lunarCard.getSnapshot();
+    transitReading = interpretTransits({
+      natalChart: natal,
+      natalPositions: natalPoints,
+      transitPositions: transitPoints,
+      transitAspects,
+      houses: houses(),
+      chartRulerId: natalReading?.coreTrio.chartRuler?.rulerId ?? null,
+      dateOnlyNatalFacts: natalReading?.dateOnlyFacts ?? null,
+      transitMoonState: snap.state,
+      selectedTt,
+      momentLabel: selectedLabel || `${selectedDate} ${selectedTime} UTC`,
+      displayZone: selectedZone,
+      isDemo: applied.demo,
+      birthSummary: applied.text,
+      enrichment: transitEnrichment,
+      enrichmentState: transitEnrichmentState,
+    });
+    readingPanel.updateTransits(transitReading);
+  }
+
+  function shouldEnrichTransits(): boolean {
+    if (readingPanel.activeMode() === 'transits') return true;
+    if (selectedKey.startsWith('transit/')) return true;
+    const asp = aspectForSelection();
+    return Boolean(asp && asp.from.chartId !== asp.to.chartId);
+  }
+
+  function scheduleTransitEnrichment() {
+    cancelTransitEnrichment();
+    if (!natal || !transitReading || !shouldEnrichTransits()) return;
+    const sig = transitSignature();
+    if (enrichmentCache.has(sig)) {
+      computeTransitReadingSync();
+      showInspection();
+      return;
+    }
+    const req = buildTransitEnrichmentRequest(transitReading, natalPoints, houses(), sig);
+    if (!req) return;
+
+    transitEnrichmentState = 'loading';
+    transitReading = { ...transitReading, enrichmentState: 'loading' };
+    readingPanel.updateTransits(transitReading);
+
+    const reqId = ++enrichmentReqId;
+    enrichmentTimer = setTimeout(() => {
+      enrichmentTimer = undefined;
+      if (reqId !== enrichmentReqId) return;
+      const job = startTransitEnrichment(req);
+      enrichmentJob = job;
+      job.result.then(result => {
+        if (reqId !== enrichmentReqId || transitSignature() !== result.signature) return;
+        enrichmentJob = undefined;
+        if (enrichmentCache.size >= 24) {
+          const oldest = enrichmentCache.keys().next().value;
+          if (oldest !== undefined) enrichmentCache.delete(oldest);
+        }
+        enrichmentCache.set(result.signature, result);
+        computeTransitReadingSync();
+        showInspection();
+      }).catch(() => {
+        if (reqId !== enrichmentReqId) return;
+        enrichmentJob = undefined;
+        if (transitReading) {
+          transitEnrichmentState = 'idle';
+          transitReading = { ...transitReading, enrichmentState: 'idle' };
+          readingPanel.updateTransits(transitReading);
+        }
+      });
+    }, 280);
+  }
+
   function refreshNatalReading() {
     if (!natal) return;
+    cancelTransitEnrichment();
+    enrichmentCache.clear();
     natalReading = interpretNatalChart({
       chart: natal,
       positions: natalPoints,
@@ -472,6 +585,7 @@ export function mountObservatory(engine: EphemeraEngine) {
       position: layer === 'natal' ? natalPoints.get(id) : layer === 'transit' ? transitPoints.get(id) : undefined,
       lunar: buildLunarModel(),
       natalReading,
+      transitReading,
     });
     if (active) [...inspection.querySelectorAll<HTMLButtonElement>('[data-select-key]')]
       .find(button => button.dataset.selectKey === active)?.focus({ preventScroll: true });
@@ -498,6 +612,9 @@ export function mountObservatory(engine: EphemeraEngine) {
     selectedKey = key;
     showInspection();
     markSelection();
+    if (shouldEnrichTransits() && !enrichmentCache.has(transitSignature()) && transitEnrichmentState !== 'loading') {
+      scheduleTransitEnrichment();
+    }
   }
 
   /** Opens the chart guide: the Inspector's start state, with full-size buttons for every sign, house, angle and aspect type. */
@@ -582,6 +699,8 @@ export function mountObservatory(engine: EphemeraEngine) {
       Number.isFinite(selectedEpochMs) ? selectedEpochMs : null,
       selectedZone,
     );
+    computeTransitReadingSync();
+    scheduleTransitEnrichment();
     showData();
     showInspection();
     markSelection();
@@ -664,13 +783,14 @@ export function mountObservatory(engine: EphemeraEngine) {
   }, { signal });
   byId<HTMLButtonElement>('calculate').disabled = false;
   calculateBirth(true);
-  bindTimeline((date, time, label, zone) => {
+  timelineControl = bindTimeline((date, time, label, zone) => {
     selectedLabel = label;
     selectedZone = zone;
     if (date === selectedDate && time === selectedTime) {
       if (!frame) {
         byId('selected-epoch').textContent = label;
         lunarCard.updateZone(zone);
+        computeTransitReadingSync();
         showInspection();
       }
       return;
@@ -682,6 +802,7 @@ export function mountObservatory(engine: EphemeraEngine) {
   }, signal);
 
   return () => {
+    cancelTransitEnrichment();
     controls.abort();
     cancelAnimationFrame(frame);
     wheel.dispose();

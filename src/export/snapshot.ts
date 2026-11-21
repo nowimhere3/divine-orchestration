@@ -1,4 +1,4 @@
-import { aspectFactId, calculateAspects, createAspectRuleSet } from '../domain/aspects';
+import { aspectFactId, calculateAspects, createAspectRuleSet, MAJOR_ASPECT_ANGLES } from '../domain/aspects';
 import type { AspectFact, AspectRuleSetV0 } from '../domain/aspects';
 import { PLANET_IDS } from '../domain/chart';
 import type { Chart, ChartWarning, PlanetRef } from '../domain/chart';
@@ -6,7 +6,21 @@ import type { AstrologyEvent, EventMoment, SymbolicMeaning } from '../domain/eve
 import { isLocalEphemeraEngine } from '../engine/ephemera';
 import type { EphemeraEngine } from '../engine/ephemera';
 import { interpretNatalChart, natalSymbolicMeanings } from '../interpret/natal';
-import { availablePositions, orderedCusps } from '../view/chart-data';
+import { interpretTransits, transitSymbolicMeanings } from '../interpret/transits';
+import { signMeta } from '../knowledge';
+import { availablePositions, orderedCusps, wrapDegrees } from '../view/chart-data';
+
+const VALID_PLANET_IDS = new Set<string>(PLANET_IDS);
+const VALID_ASPECT_IDS = new Set<string>(Object.keys(MAJOR_ASPECT_ANGLES));
+const VALID_CHART_KINDS = new Set<string>(['natal', 'transit']);
+const VALID_HOUSE_SYSTEMS = new Set<string>(['WholeSign', 'Placidus', 'Porphyry']);
+const VALID_UNAVAILABLE_REASONS = new Set<string>([
+  'unknown-birth-time', 'missing-location', 'invalid-input',
+  'outside-coverage', 'unsupported-body', 'calculation-unavailable',
+]);
+const VALID_EVENT_TIMINGS = new Set<string>(['past', 'active', 'future']);
+const VALID_STATION_TURNS = new Set<string>(['direct', 'retrograde']);
+const VALID_PASS_STATES = new Set<string>(['exact', 'refined', 'near-miss']);
 
 export interface SnapshotContext {
   readonly selectedAt: EventMoment | null;
@@ -72,6 +86,7 @@ export interface SnapshotInput {
 interface SnapshotOptions {
   readonly redactBirthDetails?: boolean;
   readonly includeRedactedNatalSynthesis?: boolean;
+  readonly includeRedactedTransitSynthesis?: boolean;
   readonly dateOnlyEngine?: EphemeraEngine;
 }
 
@@ -93,8 +108,22 @@ function canonicalJson(value: unknown): Json {
 const hiddenMoment: EventMoment = { utc: null, jdUt: null, jdTt: null };
 
 function redactEvent(event: AstrologyEvent, id: string, ref: (point: PlanetRef) => PlanetRef): AstrologyEvent {
+  if (!VALID_EVENT_TIMINGS.has(event.timing)) {
+    throw new RangeError('Snapshot event contains an invalid timing status.');
+  }
   if (event.kind === 'station') {
+    if (!VALID_STATION_TURNS.has(event.turns)) {
+      throw new RangeError('Snapshot station event contains an invalid direction.');
+    }
     return { kind: event.kind, id, timing: event.timing, planet: ref(event.planet), at: hiddenMoment, turns: event.turns };
+  }
+  if (!VALID_ASPECT_IDS.has(event.aspect)) {
+    throw new RangeError('Snapshot event contains an invalid aspect identifier.');
+  }
+  for (const pass of event.passes) {
+    if (!VALID_PASS_STATES.has(pass.state)) {
+      throw new RangeError('Snapshot event pass contains an invalid state.');
+    }
   }
   return {
     kind: event.kind, id, timing: event.timing,
@@ -152,9 +181,96 @@ function redactedNatalMeanings(
   return natalSymbolicMeanings(reading, safeChartId);
 }
 
+/** Derive redacted transit meanings strictly from validated captured natal + transit geometry. */
+function redactedTransitMeanings(
+  natalChart: Chart,
+  safeNatalId: string,
+  transitChart: Chart,
+  safeTransitId: string,
+  capturedAspects: readonly AspectFact[],
+  rules: AspectRuleSetV0,
+  engine: EphemeraEngine | undefined,
+): readonly SymbolicMeaning[] {
+  if (natalChart.time.kind === 'unknown-time' && !isLocalEphemeraEngine(engine)) return [];
+  const isLongitude = (value: number) => Number.isFinite(value) && value >= 0 && value < 360;
+  const validPositions = (chart: Chart) => {
+    const avail = availablePositions(chart.planets.status === 'available' ? chart.planets.value : []);
+    return new Map(PLANET_IDS.flatMap(planetId => {
+      const point = avail.get(planetId);
+      return point && isLongitude(point.longitudeDeg)
+        && Number.isFinite(point.longitudeSpeedDegPerDay)
+        && typeof point.retrograde === 'boolean'
+        ? [[planetId, point] as const] : [];
+    }));
+  };
+
+  const natalPositions = validPositions(natalChart);
+  const transitPositions = validPositions(transitChart);
+  if (!transitPositions.size) return [];
+
+  const candidate = natalChart.houses.status === 'available' ? natalChart.houses.value : null;
+  const houses = candidate && ['WholeSign', 'Placidus', 'Porphyry'].includes(candidate.effectiveSystem)
+    && candidate.cusps.every((cusp, index) => cusp.houseId === index + 1)
+    && orderedCusps(candidate.cusps.map(cusp => cusp.longitudeDeg))
+    && isLongitude(candidate.ascendantDeg) && isLongitude(candidate.midheavenDeg)
+    ? candidate : null;
+
+  const capturedById = new Map(capturedAspects.map(fact => [fact.id, fact]));
+  const expectedCrossing = calculateAspects([
+    ...[...natalPositions].map(([planetId, point]) => ({ chartId: 'natal', planetId, longitudeDeg: point.longitudeDeg })),
+    ...[...transitPositions].map(([planetId, point]) => ({ chartId: 'transit', planetId, longitudeDeg: point.longitudeDeg })),
+  ], rules).filter(expected => {
+    if (expected.from.chartId === expected.to.chartId) return false;
+    const fromSafe = expected.from.chartId === 'natal' ? safeNatalId : safeTransitId;
+    const toSafe = expected.to.chartId === 'natal' ? safeNatalId : safeTransitId;
+    const id = aspectFactId(
+      { chartId: fromSafe, planetId: expected.from.planetId },
+      { chartId: toSafe, planetId: expected.to.planetId },
+      expected.aspect,
+    );
+    const captured = capturedById.get(id);
+    return captured && captured.separationDeg === expected.separationDeg && captured.orbDeg === expected.orbDeg
+      && captured.allowedOrbDeg === expected.allowedOrbDeg && captured.exactAngleDeg === expected.exactAngleDeg
+      && captured.ruleSetVersion === expected.ruleSetVersion;
+  });
+
+  let dateOnlyNatalFacts = null;
+  if (natalChart.time.kind === 'unknown-time' && isLocalEphemeraEngine(engine)) {
+    const natalReading = interpretNatalChart({
+      chart: { ...natalChart, id: 'natal', label: null, settings: { zodiac: 'tropical', requestedHouseSystem: null, observer: null } },
+      positions: new Map(), houses: null, aspects: [], engine,
+      natalMoonState: null, dateOnlyMoonSummary: null, isDemo: false, birthSummary: '',
+    });
+    dateOnlyNatalFacts = natalReading.dateOnlyFacts;
+  }
+
+  const chartRulerId = houses ? signMeta(Math.floor(wrapDegrees(houses.ascendantDeg) / 30) % 12).traditionalRuler : null;
+  const reading = interpretTransits({
+    natalChart: { ...natalChart, id: 'natal', label: null, settings: { zodiac: 'tropical', requestedHouseSystem: null, observer: null } },
+    natalPositions,
+    transitPositions,
+    transitAspects: expectedCrossing,
+    houses,
+    chartRulerId,
+    dateOnlyNatalFacts,
+    transitMoonState: null,
+    selectedTt: null,
+    momentLabel: 'selected moment',
+    displayZone: 'UTC',
+    isDemo: false,
+    birthSummary: '',
+    enrichment: null,
+    enrichmentState: 'idle',
+  });
+  return transitSymbolicMeanings(reading, safeTransitId, safeNatalId, { redactedSafe: true });
+}
+
 /** Redaction omits exact epochs, birth inputs, chart labels, location and application IDs. */
 export function createSnapshotV0(input: SnapshotInput, {
-  redactBirthDetails = false, includeRedactedNatalSynthesis = false, dateOnlyEngine,
+  redactBirthDetails = false,
+  includeRedactedNatalSynthesis = false,
+  includeRedactedTransitSynthesis = false,
+  dateOnlyEngine,
 }: SnapshotOptions = {}): SnapshotV0 {
   if (input.aspectRules.version !== 0) throw new RangeError('Unsupported snapshot aspect rule set.');
   const idMap = new Map(input.charts.map((chart, index) =>
@@ -164,11 +280,44 @@ export function createSnapshotV0(input: SnapshotInput, {
   const ref = ({ chartId, planetId }: PlanetRef): PlanetRef => {
     const id = idMap.get(chartId);
     if (id === undefined) throw new Error('Snapshot contains a reference to an unknown chart.');
+    if (redactBirthDetails && !VALID_PLANET_IDS.has(planetId)) {
+      throw new RangeError('Snapshot contains an invalid planet identifier.');
+    }
     return { chartId: id, planetId };
   };
 
   const charts = input.charts.map((chart): SnapshotChart => {
     const { id, kind, label, time, settings, planets, houses } = chart;
+    if (redactBirthDetails) {
+      if (!VALID_CHART_KINDS.has(kind)) {
+        throw new RangeError('Snapshot contains an invalid chart kind.');
+      }
+      if (settings.zodiac !== 'tropical') {
+        throw new RangeError('Snapshot contains an invalid zodiac setting.');
+      }
+      if (settings.requestedHouseSystem !== null && !VALID_HOUSE_SYSTEMS.has(settings.requestedHouseSystem)) {
+        throw new RangeError('Snapshot contains an invalid house system identifier.');
+      }
+      if (planets.status === 'available') {
+        for (const fact of planets.value) {
+          if (!VALID_PLANET_IDS.has(fact.planetId)) {
+            throw new RangeError('Snapshot chart contains an invalid planet identifier.');
+          }
+          if (fact.position.status === 'unavailable' && !VALID_UNAVAILABLE_REASONS.has(fact.position.reason)) {
+            throw new RangeError('Snapshot chart contains an invalid unavailable reason.');
+          }
+        }
+      } else if (!VALID_UNAVAILABLE_REASONS.has(planets.reason)) {
+        throw new RangeError('Snapshot chart contains an invalid unavailable reason.');
+      }
+      if (houses.status === 'available') {
+        if (!VALID_HOUSE_SYSTEMS.has(houses.value.effectiveSystem)) {
+          throw new RangeError('Snapshot chart contains an invalid effective house system.');
+        }
+      } else if (!VALID_UNAVAILABLE_REASONS.has(houses.reason)) {
+        throw new RangeError('Snapshot chart contains an invalid unavailable reason.');
+      }
+    }
     const warnings: ChartWarning[] = [...new Set([
       ...chart.warnings, ...(time.kind === 'resolved' ? time.warnings : []),
     ])].sort();
@@ -190,6 +339,14 @@ export function createSnapshotV0(input: SnapshotInput, {
     const from = ref(fact.from);
     const to = ref(fact.to);
     const { aspect, exactAngleDeg, separationDeg, orbDeg, allowedOrbDeg, ruleSetVersion } = fact;
+    if (redactBirthDetails) {
+      if (!VALID_ASPECT_IDS.has(aspect)) {
+        throw new RangeError('Snapshot contains an invalid aspect identifier.');
+      }
+      if (ruleSetVersion !== 0) {
+        throw new RangeError('Snapshot contains an unsupported aspect rule set version.');
+      }
+    }
     return {
       id: redactBirthDetails ? aspectFactId(from, to, aspect) : fact.id,
       from, to, aspect, exactAngleDeg, separationDeg, orbDeg, allowedOrbDeg, ruleSetVersion,
@@ -210,10 +367,19 @@ export function createSnapshotV0(input: SnapshotInput, {
       }),
     },
   };
-  const natal = redactBirthDetails && includeRedactedNatalSynthesis
+  const natal = redactBirthDetails && (includeRedactedNatalSynthesis || includeRedactedTransitSynthesis)
     ? input.charts.find(chart => chart.kind === 'natal') : undefined;
+  const transit = redactBirthDetails && includeRedactedTransitSynthesis
+    ? input.charts.find(chart => chart.kind === 'transit') : undefined;
   const interpretations = redactBirthDetails
-    ? natal ? redactedNatalMeanings(natal, idMap.get(natal.id)!, aspects, input.aspectRules, dateOnlyEngine) : []
+    ? [
+      ...(natal && includeRedactedNatalSynthesis
+        ? redactedNatalMeanings(natal, idMap.get(natal.id)!, aspects, input.aspectRules, dateOnlyEngine)
+        : []),
+      ...(natal && transit && includeRedactedTransitSynthesis
+        ? redactedTransitMeanings(natal, idMap.get(natal.id)!, transit, idMap.get(transit.id)!, aspects, input.aspectRules, dateOnlyEngine)
+        : []),
+    ]
     : (input.interpretations ?? []).map(({ factId, tradition, ruleSetVersion, description, sources }) =>
       ({ factId, tradition, ruleSetVersion, description, sources: [...sources] }));
 
