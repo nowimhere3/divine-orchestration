@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:divine-orchestration:research-events-part:v1",
+  "title": "Divine Orchestration research events part v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "packageId",
+    "format",
+    "privacy",
+    "partNumber",
+    "totalParts",
+    "eventCount",
+    "totalEvents",
+    "eventIndexRange",
+    "instruction",
+    "events"
+  ],
+  "properties": {
+    "schema": {"const":"divine-orchestration/research-events-part"},
+    "schemaVersion": {"const":1},
+    "packageId": {"$ref":"urn:divine-orchestration:research-export:v1#/$defs/packageId"},
+    "format": {"$ref":"urn:divine-orchestration:research-export:v1#/$defs/format"},
+    "privacy": {"$ref":"urn:divine-orchestration:research-export:v1#/$defs/privacy"},
+    "partNumber": {"type":"integer","minimum":1},
+    "totalParts": {"type":"integer","minimum":1},
+    "eventCount": {"type":"integer","minimum":0},
+    "totalEvents": {"type":"integer","minimum":0},
+    "eventIndexRange": {"$ref":"urn:divine-orchestration:research-export:v1#/$defs/eventIndexRange"},
+    "instruction": {"type":"string"},
+    "events": {"type":"array","items":{"$ref":"urn:divine-orchestration:research-export:v1#/$defs/event"}}
+  }
+}

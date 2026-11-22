@@ -1,0 +1,836 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:divine-orchestration:research-export:v1",
+  "title": "Divine Orchestration standalone research export v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema","schemaVersion","packageId","format","research","events"],
+  "properties": {
+    "schema": {"const":"divine-orchestration/research-export"},
+    "schemaVersion": {"const":1},
+    "packageId": {"$ref":"#/$defs/packageId"},
+    "format": {"$ref":"#/$defs/format"},
+    "research": {"$ref":"#/$defs/research"},
+    "events": {"type":"array","items":{"$ref":"#/$defs/event"}}
+  },
+  "$defs": {
+    "packageId": {"type":"string","pattern":"^research-[a-f0-9]{64}$"},
+    "sha256": {"type":"string","pattern":"^[a-f0-9]{64}$"},
+    "format": {"enum":["json","markdown"]},
+    "mode": {"enum":["focused","complete","research-package"]},
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["birthDetails","eventDates"],
+      "properties": {"birthDetails":{"enum":["redacted","full"]},"eventDates":{"enum":["relative","calendar","omit"]}}
+    },
+    "planet": {"enum":["sun","moon","mercury","venus","mars","jupiter","saturn","uranus","neptune","pluto"]},
+    "house": {"type":"integer","minimum":1,"maximum":12},
+    "angle": {"enum":["asc","mc","dsc","ic"]},
+    "aspect": {"enum":["conjunction","sextile","square","trine","opposition"]},
+    "kind": {"enum":["aspect-window","angle-aspect-window","house-ingress","station"]},
+    "houseSystem": {"enum":["WholeSign","Placidus","Porphyry"]},
+    "unavailable": {
+      "enum": [
+        "unknown-birth-time",
+        "missing-location",
+        "invalid-input",
+        "outside-coverage",
+        "unsupported-body",
+        "calculation-unavailable"
+      ]
+    },
+    "orbPolicy": {"enum":["transit-focused","chart-v0","custom"]},
+    "rulership": {"enum":["traditional","traditional-plus-modern"]},
+    "turn": {"enum":["direct","retrograde"]},
+    "tier": {"enum":["primary","secondary","context"]},
+    "status": {"enum":["complete","partial","unavailable"]},
+    "moment": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["utc","jdUt","jdTt"],
+          "properties": {
+            "utc": {
+              "anyOf": [{"type":"string","pattern":"^(?:\\d{4}|[+-]\\d{6})-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"},{"type":"null"}]
+            },
+            "jdUt": {"anyOf":[{"type":"number"},{"type":"null"}]},
+            "jdTt": {"anyOf":[{"type":"number"},{"type":"null"}]}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["offsetTtDays"],
+          "properties": {"offsetTtDays":{"type":"number"}}
+        },
+        {"type":"null"}
+      ]
+    },
+    "eventIndexRange": {
+      "anyOf": [
+        {
+          "type": "array",
+          "prefixItems": [{"type":"integer","minimum":1},{"type":"integer","minimum":1}],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        {"type":"null"}
+      ]
+    },
+    "pass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at","state","residualDeg","toleranceDeg","retrograde","passNumberInSeries"],
+      "properties": {
+        "at": {"$ref":"#/$defs/moment"},
+        "state": {"enum":["exact","refined","near-miss"]},
+        "residualDeg": {"anyOf":[{"type":"number"},{"type":"null"}]},
+        "toleranceDeg": {"anyOf":[{"type":"number"},{"type":"null"}]},
+        "retrograde": {"anyOf":[{"type":"boolean"},{"type":"null"}]},
+        "passNumberInSeries": {"anyOf":[{"type":"integer","minimum":1},{"type":"null"}]}
+      }
+    },
+    "series": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "branchLongitudeDeg",
+        "windowIndex",
+        "windowCountInRange",
+        "exactPassCountInRange",
+        "isRetrogradeSeries",
+        "clippedStart",
+        "clippedEnd",
+        "complete"
+      ],
+      "properties": {
+        "id": {"type":"string","pattern":"^series-[1-9]\\d*$"},
+        "branchLongitudeDeg": {"type":"number"},
+        "windowIndex": {"type":"integer","minimum":0},
+        "windowCountInRange": {"type":"integer","minimum":1},
+        "exactPassCountInRange": {"type":"integer","minimum":0},
+        "isRetrogradeSeries": {"type":"boolean"},
+        "clippedStart": {"type":"boolean"},
+        "clippedEnd": {"type":"boolean"},
+        "complete": {"type":"boolean"}
+      }
+    },
+    "angleWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "timing",
+        "transitPlanetId",
+        "aspect",
+        "startsAt",
+        "endsAt",
+        "clippedStart",
+        "clippedEnd",
+        "allowedOrbDeg",
+        "passes",
+        "series",
+        "kind",
+        "targetAngle"
+      ],
+      "properties": {
+        "id": {"type":"string","pattern":"^event-[1-9]\\d*$"},
+        "timing": {"enum":["past","present","future","unknown"]},
+        "transitPlanetId": {"$ref":"#/$defs/planet"},
+        "aspect": {"$ref":"#/$defs/aspect"},
+        "startsAt": {"$ref":"#/$defs/moment"},
+        "endsAt": {"$ref":"#/$defs/moment"},
+        "clippedStart": {"type":"boolean"},
+        "clippedEnd": {"type":"boolean"},
+        "allowedOrbDeg": {"type":"number"},
+        "passes": {"type":"array","items":{"$ref":"#/$defs/pass"}},
+        "series": {"$ref":"#/$defs/series"},
+        "kind": {"const":"angle-aspect-window"},
+        "targetAngle": {"$ref":"#/$defs/angle"}
+      }
+    },
+    "facts": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "timing",
+            "transitPlanetId",
+            "aspect",
+            "startsAt",
+            "endsAt",
+            "clippedStart",
+            "clippedEnd",
+            "allowedOrbDeg",
+            "passes",
+            "series",
+            "kind",
+            "natalPlanetId"
+          ],
+          "properties": {
+            "id": {"type":"string","pattern":"^event-[1-9]\\d*$"},
+            "timing": {"enum":["past","present","future","unknown"]},
+            "transitPlanetId": {"$ref":"#/$defs/planet"},
+            "aspect": {"$ref":"#/$defs/aspect"},
+            "startsAt": {"$ref":"#/$defs/moment"},
+            "endsAt": {"$ref":"#/$defs/moment"},
+            "clippedStart": {"type":"boolean"},
+            "clippedEnd": {"type":"boolean"},
+            "allowedOrbDeg": {"type":"number"},
+            "passes": {"type":"array","items":{"$ref":"#/$defs/pass"}},
+            "series": {"$ref":"#/$defs/series"},
+            "kind": {"const":"aspect-window"},
+            "natalPlanetId": {"$ref":"#/$defs/planet"}
+          }
+        },
+        {"$ref":"#/$defs/angleWindow"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id","timing","kind","planetId","at","cuspHouseId","fromHouse","toHouse","retrograde","houseSystem"],
+          "properties": {
+            "id": {"type":"string","pattern":"^event-[1-9]\\d*$"},
+            "timing": {"enum":["past","present","future","unknown"]},
+            "kind": {"const":"house-ingress"},
+            "planetId": {"$ref":"#/$defs/planet"},
+            "at": {"$ref":"#/$defs/moment"},
+            "cuspHouseId": {"type":"integer","minimum":1,"maximum":12},
+            "fromHouse": {"type":"integer","minimum":1,"maximum":12},
+            "toHouse": {"type":"integer","minimum":1,"maximum":12},
+            "retrograde": {"type":"boolean"},
+            "houseSystem": {"anyOf":[{"$ref":"#/$defs/houseSystem"},{"type":"null"}]}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id","timing","kind","planetId","at","turns","residualDegPerDay","inNatalHouse"],
+          "properties": {
+            "id": {"type":"string","pattern":"^event-[1-9]\\d*$"},
+            "timing": {"enum":["past","present","future","unknown"]},
+            "kind": {"const":"station"},
+            "planetId": {"$ref":"#/$defs/planet"},
+            "at": {"$ref":"#/$defs/moment"},
+            "turns": {"$ref":"#/$defs/turn"},
+            "residualDegPerDay": {"anyOf":[{"type":"number"},{"type":"null"}]},
+            "inNatalHouse": {"anyOf":[{"type":"integer","minimum":1,"maximum":12},{"type":"null"}]}
+          }
+        }
+      ]
+    },
+    "reasonParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "planetId": {"$ref":"#/$defs/planet"},
+        "targetPlanetId": {"$ref":"#/$defs/planet"},
+        "aspect": {"$ref":"#/$defs/aspect"},
+        "houseId": {"type":"integer","minimum":1,"maximum":12},
+        "fromHouse": {"type":"integer","minimum":1,"maximum":12},
+        "toHouse": {"type":"integer","minimum":1,"maximum":12},
+        "signIndex": {"type":"integer","minimum":0,"maximum":11},
+        "angle": {"$ref":"#/$defs/angle"},
+        "oppositeAngle": {"$ref":"#/$defs/angle"},
+        "oppositeAspect": {"$ref":"#/$defs/aspect"},
+        "turns": {"$ref":"#/$defs/turn"},
+        "themeIds": {"type":"array","items":{"type":"string","pattern":"^theme-[1-9]\\d*$"}},
+        "convergenceCount": {"type":"integer","minimum":0},
+        "exactPassCount": {"type":"integer","minimum":0},
+        "isRetrogradeSeries": {"type":"boolean"},
+        "tempoGroup": {"enum":["outer","social","personal","lunar"]},
+        "isDerivedOpposite": {"type":"boolean"}
+      }
+    },
+    "relevance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tier",
+        "inFocus",
+        "excludedByFocus",
+        "rawScore",
+        "score",
+        "matchedThemeIds",
+        "matchedHouses",
+        "matchedAngles",
+        "reasons",
+        "whyRelevant"
+      ],
+      "properties": {
+        "tier": {"$ref":"#/$defs/tier"},
+        "inFocus": {"type":"boolean"},
+        "excludedByFocus": {"type":"boolean"},
+        "rawScore": {"type":"integer","minimum":0},
+        "score": {"type":"integer","minimum":0,"maximum":100},
+        "matchedThemeIds": {"type":"array","items":{"type":"string","pattern":"^theme-[1-9]\\d*$"}},
+        "matchedHouses": {"type":"array","items":{"$ref":"#/$defs/house"}},
+        "matchedAngles": {"type":"array","items":{"$ref":"#/$defs/angle"}},
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code","points","category","params","summary"],
+            "properties": {
+              "code": {
+                "enum": [
+                  "house-ingress-focus",
+                  "natal-occupant-contact",
+                  "house-ruler-contact",
+                  "modern-coruler-contact",
+                  "angle-axis-contact",
+                  "station-in-focus-house",
+                  "explicit-custom-target",
+                  "multi-theme-convergence",
+                  "natural-significator",
+                  "cycle-tempo-weight",
+                  "contact-precision",
+                  "angular-prominence",
+                  "broader-astronomical-context"
+                ]
+              },
+              "points": {"type":"integer","minimum":0},
+              "category": {"enum":["astronomical","chart-linkage","symbolic-convention"]},
+              "params": {"$ref":"#/$defs/reasonParams"},
+              "summary": {"type":"string"}
+            }
+          }
+        },
+        "whyRelevant": {"type":"string"}
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id","orderAt","facts","axisCompanions","relevance"],
+      "properties": {
+        "id": {"type":"string","pattern":"^event-[1-9]\\d*$"},
+        "orderAt": {"$ref":"#/$defs/moment"},
+        "facts": {"$ref":"#/$defs/facts"},
+        "axisCompanions": {"type":"array","items":{"$ref":"#/$defs/angleWindow"}},
+        "relevance": {"$ref":"#/$defs/relevance"}
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transitingBodies","moon","includesBroaderContext","counts","completeForSelectedScope"],
+      "properties": {
+        "transitingBodies": {"type":"array","items":{"$ref":"#/$defs/planet"}},
+        "moon": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requested","included","calculated"],
+          "properties": {"requested":{"type":"boolean"},"included":{"type":"boolean"},"calculated":{"type":"boolean"}}
+        },
+        "includesBroaderContext": {"type":"boolean"},
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "calculated",
+            "presented",
+            "axisDuplicatesMerged",
+            "outsideCalculatedBodyScope",
+            "outsideExportComputationScope",
+            "omittedBroaderContext",
+            "exported"
+          ],
+          "properties": {
+            "calculated": {"type":"integer","minimum":0},
+            "presented": {"type":"integer","minimum":0},
+            "axisDuplicatesMerged": {"type":"integer","minimum":0},
+            "outsideCalculatedBodyScope": {"type":"integer","minimum":0},
+            "outsideExportComputationScope": {"type":"integer","minimum":0},
+            "omittedBroaderContext": {"type":"integer","minimum":0},
+            "exported": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["total","byKind","byTier","byBody","byTheme","byHouse","moon","axisCompanions"],
+              "properties": {
+                "total": {"type":"integer","minimum":0},
+                "byKind": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["aspect-window","angle-aspect-window","house-ingress","station"],
+                  "properties": {
+                    "aspect-window": {"type":"integer","minimum":0},
+                    "angle-aspect-window": {"type":"integer","minimum":0},
+                    "house-ingress": {"type":"integer","minimum":0},
+                    "station": {"type":"integer","minimum":0}
+                  }
+                },
+                "byTier": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["primary","secondary","context"],
+                  "properties": {
+                    "primary": {"type":"integer","minimum":0},
+                    "secondary": {"type":"integer","minimum":0},
+                    "context": {"type":"integer","minimum":0}
+                  }
+                },
+                "byBody": {
+                  "type": "object",
+                  "propertyNames": {"$ref":"#/$defs/planet"},
+                  "additionalProperties": {"type":"integer","minimum":0}
+                },
+                "byTheme": {
+                  "type": "object",
+                  "propertyNames": {"type":"string","pattern":"^theme-[1-9]\\d*$"},
+                  "additionalProperties": {"type":"integer","minimum":0}
+                },
+                "byHouse": {
+                  "type": "object",
+                  "propertyNames": {"pattern":"^(?:[1-9]|1[0-2])$"},
+                  "additionalProperties": {"type":"integer","minimum":0}
+                },
+                "moon": {"type":"integer","minimum":0},
+                "axisCompanions": {"type":"integer","minimum":0}
+              }
+            }
+          }
+        },
+        "completeForSelectedScope": {"const":true}
+      }
+    },
+    "query": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version","mode","range","computation","focus","contextPolicy","resolvedFocus"],
+      "properties": {
+        "version": {"const":1},
+        "mode": {"enum":["everything","themes","custom"]},
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["preset"],
+          "properties": {
+            "preset": {"enum":["30d","90d","12m","2y","5y","10y-slow","custom"]},
+            "startDate": {"type":"string","pattern":"^\\d{4}-\\d{2}-\\d{2}$"},
+            "endDate": {"type":"string","pattern":"^\\d{4}-\\d{2}-\\d{2}$"}
+          }
+        },
+        "computation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["transitingBodies","orbPolicy","includeAngles","includeHouseIngresses","includeStations","fetchScope"],
+          "properties": {
+            "transitingBodies": {"type":"array","items":{"$ref":"#/$defs/planet"}},
+            "orbPolicy": {"$ref":"#/$defs/orbPolicy"},
+            "customOrbsDeg": {"$ref":"urn:divine-orchestration:snapshot:v0#/$defs/aspectRules/properties/orbsDeg"},
+            "includeAngles": {"type":"boolean"},
+            "includeHouseIngresses": {"type":"boolean"},
+            "includeStations": {"type":"boolean"},
+            "fetchScope": {"enum":["broad","strict"]}
+          }
+        },
+        "focus": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "activeThemeIds",
+            "includeHouses",
+            "excludeHouses",
+            "includeRulers",
+            "rulershipPolicy",
+            "includeHouseOccupants",
+            "includeNatalPlanets",
+            "excludeNatalPlanets",
+            "excludeTransitingBodies",
+            "includeAngles",
+            "excludeAngles",
+            "includeAspects",
+            "includeEventKinds",
+            "exactOnly"
+          ],
+          "properties": {
+            "activeThemeIds": {"type":"array","items":{"type":"string","pattern":"^theme-[1-9]\\d*$"}},
+            "includeHouses": {"type":"array","items":{"$ref":"#/$defs/house"}},
+            "excludeHouses": {"type":"array","items":{"$ref":"#/$defs/house"}},
+            "includeRulers": {"type":"boolean"},
+            "rulershipPolicy": {"$ref":"#/$defs/rulership"},
+            "includeHouseOccupants": {"type":"boolean"},
+            "includeNatalPlanets": {"type":"array","items":{"$ref":"#/$defs/planet"}},
+            "excludeNatalPlanets": {"type":"array","items":{"$ref":"#/$defs/planet"}},
+            "excludeTransitingBodies": {"type":"array","items":{"$ref":"#/$defs/planet"}},
+            "includeAngles": {"type":"array","items":{"$ref":"#/$defs/angle"}},
+            "excludeAngles": {"type":"array","items":{"$ref":"#/$defs/angle"}},
+            "includeAspects": {"type":"array","items":{"$ref":"#/$defs/aspect"}},
+            "includeEventKinds": {"type":"array","items":{"$ref":"#/$defs/kind"}},
+            "exactOnly": {"type":"boolean"}
+          }
+        },
+        "contextPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["retainBroaderContext","highlightSlowContext"],
+          "properties": {"retainBroaderContext":{"type":"boolean"},"highlightSlowContext":{"type":"boolean"}}
+        },
+        "resolvedFocus": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "hasNarrowedFocus",
+            "unavailableFocus",
+            "degradedMode",
+            "notices",
+            "activeHouses",
+            "activeAngles",
+            "effectiveNatalPlanets",
+            "effectiveTransitingBodies"
+          ],
+          "properties": {
+            "hasNarrowedFocus": {"type":"boolean"},
+            "unavailableFocus": {"type":"boolean"},
+            "degradedMode": {"enum":["none","planetary-significators-only","stations-only"]},
+            "notices": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "unknown-birth-time-stations-only",
+                  "houses-unavailable-planetary-fallback",
+                  "requested-houses-or-angles-unavailable",
+                  "polar-house-fallback-active",
+                  "unknown-theme-id-ignored"
+                ]
+              }
+            },
+            "activeHouses": {"type":"array","items":{"$ref":"#/$defs/house"}},
+            "activeAngles": {"type":"array","items":{"$ref":"#/$defs/angle"}},
+            "effectiveNatalPlanets": {"type":"array","items":{"$ref":"#/$defs/planet"}},
+            "effectiveTransitingBodies": {"type":"array","items":{"$ref":"#/$defs/planet"}}
+          }
+        }
+      }
+    },
+    "themes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ruleSetVersion","convention","definitions"],
+      "properties": {
+        "ruleSetVersion": {"const":"u6-themes-v1"},
+        "convention": {"type":"string"},
+        "definitions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id","label","resolved","houses","naturalSignificators","angles","preferredAspects"],
+            "properties": {
+              "id": {"type":"string","pattern":"^theme-[1-9]\\d*$"},
+              "label": {"type":"string"},
+              "resolved": {"type":"boolean"},
+              "houses": {"type":"array","items":{"$ref":"#/$defs/house"}},
+              "naturalSignificators": {"type":"array","items":{"$ref":"#/$defs/planet"}},
+              "angles": {"type":"array","items":{"$ref":"#/$defs/angle"}},
+              "preferredAspects": {"type":"array","items":{"$ref":"#/$defs/aspect"}}
+            }
+          }
+        }
+      }
+    },
+    "calculation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status","reason","coverage","settings","warnings","unavailable","provenance"],
+      "properties": {
+        "status": {"$ref":"#/$defs/status"},
+        "reason": {"enum":["outside-coverage","no-calculable-bodies",null]},
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requestedStart",
+            "requestedEnd",
+            "effectiveStart",
+            "effectiveEnd",
+            "reference",
+            "requestedDays",
+            "effectiveDays",
+            "chunkCount",
+            "chunkDays",
+            "clippedToCoverage",
+            "slowBodiesOnly",
+            "maxAllowedDays",
+            "coversRequestedInterval"
+          ],
+          "properties": {
+            "requestedStart": {"$ref":"#/$defs/moment"},
+            "requestedEnd": {"$ref":"#/$defs/moment"},
+            "effectiveStart": {"$ref":"#/$defs/moment"},
+            "effectiveEnd": {"$ref":"#/$defs/moment"},
+            "reference": {"$ref":"#/$defs/moment"},
+            "requestedDays": {"type":"number"},
+            "effectiveDays": {"type":"number"},
+            "chunkCount": {"type":"integer","minimum":0},
+            "chunkDays": {"type":"number"},
+            "clippedToCoverage": {"type":"boolean"},
+            "slowBodiesOnly": {"type":"boolean"},
+            "maxAllowedDays": {"type":"number"},
+            "coversRequestedInterval": {"type":"boolean"}
+          }
+        },
+        "settings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bodies","natalTargets","angles","includeHouseIngresses","targetHouses","orbPolicy"],
+          "properties": {
+            "bodies": {"type":"array","items":{"$ref":"#/$defs/planet"}},
+            "natalTargets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["planetId","longitudeDeg"],
+                "properties": {"planetId":{"$ref":"#/$defs/planet"},"longitudeDeg":{"anyOf":[{"type":"number"},{"type":"null"}]}}
+              }
+            },
+            "angles": {"type":"array","items":{"$ref":"#/$defs/angle"}},
+            "includeHouseIngresses": {"type":"boolean"},
+            "targetHouses": {"type":"array","items":{"$ref":"#/$defs/house"}},
+            "orbPolicy": {"$ref":"#/$defs/orbPolicy"}
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "near-coverage-edge",
+              "polar-house-fallback",
+              "search-clamped-to-coverage",
+              "crossing-uses-modeled-delta-t",
+              "modeled-delta-t",
+              "future-utc-assumption",
+              "utc-unavailable",
+              "interval-clipped"
+            ]
+          }
+        },
+        "unavailable": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind","reason"],
+                "properties": {"kind":{"const":"houses"},"reason":{"const":"houses-unavailable"}}
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind","planetId","reason"],
+                "properties": {
+                  "kind": {"enum":["natal-position","transit-body"]},
+                  "planetId": {"$ref":"#/$defs/planet"},
+                  "reason": {
+                    "enum": [
+                      "position-unavailable",
+                      "invalid-input",
+                      "outside-coverage",
+                      "unsupported-body",
+                      "calculation-unavailable",
+                      "no-event-returned"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["engine","deltaTSource","contactToleranceDeg","refinementSeconds","stationToleranceDegPerDay"],
+          "properties": {
+            "engine": {"anyOf":[{"$ref":"urn:divine-orchestration:snapshot:v0#/$defs/engine"},{"type":"null"}]},
+            "deltaTSource": {"const":"ephemera-model"},
+            "contactToleranceDeg": {"type":"number"},
+            "refinementSeconds": {"type":"number"},
+            "stationToleranceDegPerDay": {"type":"number"}
+          }
+        }
+      }
+    },
+    "chartFactors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chartId","rulershipPolicy","availability","houses","angles","chartRuler","natalPlanets","sensitivityNotes"],
+      "properties": {
+        "chartId": {"const":"chart-1"},
+        "rulershipPolicy": {"$ref":"#/$defs/rulership"},
+        "availability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "natalPositionsAvailable",
+            "natalUnavailableReason",
+            "housesAvailable",
+            "housesUnavailableReason",
+            "effectiveHouseSystem",
+            "polarHouseFallback",
+            "timeStatus"
+          ],
+          "properties": {
+            "natalPositionsAvailable": {"type":"boolean"},
+            "natalUnavailableReason": {"anyOf":[{"$ref":"#/$defs/unavailable"},{"type":"null"}]},
+            "housesAvailable": {"type":"boolean"},
+            "housesUnavailableReason": {"anyOf":[{"$ref":"#/$defs/unavailable"},{"type":"null"}]},
+            "effectiveHouseSystem": {"anyOf":[{"$ref":"#/$defs/houseSystem"},{"type":"null"}]},
+            "polarHouseFallback": {"type":"boolean"},
+            "timeStatus": {"enum":["resolved","unknown-time"]}
+          }
+        },
+        "houses": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "houseId",
+                  "cuspLongitudeDeg",
+                  "cuspSignIndex",
+                  "interceptedSignIndices",
+                  "traditionalRuler",
+                  "modernCoRuler",
+                  "activeRulers",
+                  "occupants",
+                  "axisAngle"
+                ],
+                "properties": {
+                  "houseId": {"type":"integer","minimum":1,"maximum":12},
+                  "cuspLongitudeDeg": {"type":"number"},
+                  "cuspSignIndex": {"type":"integer","minimum":0,"maximum":11},
+                  "interceptedSignIndices": {"type":"array","items":{"type":"integer","minimum":0,"maximum":11}},
+                  "traditionalRuler": {"$ref":"#/$defs/planet"},
+                  "modernCoRuler": {"anyOf":[{"$ref":"#/$defs/planet"},{"type":"null"}]},
+                  "activeRulers": {"type":"array","items":{"$ref":"#/$defs/planet"}},
+                  "occupants": {"type":"array","items":{"$ref":"#/$defs/planet"}},
+                  "axisAngle": {"anyOf":[{"$ref":"#/$defs/angle"},{"type":"null"}]}
+                }
+              }
+            },
+            {"type":"null"}
+          ]
+        },
+        "angles": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["angle","longitudeDeg","signIndex","houseId","oppositeAngle","solverAngle","isDerivedOpposite"],
+                "properties": {
+                  "angle": {"$ref":"#/$defs/angle"},
+                  "longitudeDeg": {"type":"number"},
+                  "signIndex": {"type":"integer","minimum":0,"maximum":11},
+                  "houseId": {"type":"integer","minimum":1,"maximum":12},
+                  "oppositeAngle": {"$ref":"#/$defs/angle"},
+                  "solverAngle": {"enum":["asc","mc"]},
+                  "isDerivedOpposite": {"type":"boolean"}
+                }
+              }
+            },
+            {"type":"null"}
+          ]
+        },
+        "chartRuler": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["traditional","modernCoRuler","ascSignIndex"],
+              "properties": {
+                "traditional": {"$ref":"#/$defs/planet"},
+                "modernCoRuler": {"anyOf":[{"$ref":"#/$defs/planet"},{"type":"null"}]},
+                "ascSignIndex": {"type":"integer","minimum":0,"maximum":11}
+              }
+            },
+            {"type":"null"}
+          ]
+        },
+        "natalPlanets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["planetId","longitudeDeg","signIndex","retrograde","houseId","rulesHousesTraditional","rulesHousesModern"],
+            "properties": {
+              "planetId": {"$ref":"#/$defs/planet"},
+              "longitudeDeg": {"type":"number"},
+              "signIndex": {"type":"integer","minimum":0,"maximum":11},
+              "retrograde": {"type":"boolean"},
+              "houseId": {"anyOf":[{"type":"integer","minimum":1,"maximum":12},{"type":"null"}]},
+              "rulesHousesTraditional": {"type":"array","items":{"$ref":"#/$defs/house"}},
+              "rulesHousesModern": {"type":"array","items":{"$ref":"#/$defs/house"}}
+            }
+          }
+        },
+        "sensitivityNotes": {"type":"array","items":{"type":"string"}}
+      }
+    },
+    "research": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exportMode",
+        "privacy",
+        "privacyNotices",
+        "query",
+        "themes",
+        "scope",
+        "calculation",
+        "snapshot",
+        "chartFactors",
+        "natalSynthesis",
+        "selectedMomentTransit",
+        "ai"
+      ],
+      "properties": {
+        "exportMode": {"$ref":"#/$defs/mode"},
+        "privacy": {"$ref":"#/$defs/privacy"},
+        "privacyNotices": {"type":"array","items":{"type":"string"}},
+        "query": {"$ref":"#/$defs/query"},
+        "themes": {"$ref":"#/$defs/themes"},
+        "scope": {"$ref":"#/$defs/scope"},
+        "calculation": {"$ref":"#/$defs/calculation"},
+        "snapshot": {"$ref":"urn:divine-orchestration:snapshot:v0"},
+        "chartFactors": {"$ref":"#/$defs/chartFactors"},
+        "natalSynthesis": {"enum":["not-requested","included","unavailable"]},
+        "selectedMomentTransit": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["scope","status","at","transitChartId","interpretations"],
+              "properties": {
+                "scope": {"const":"selected-moment"},
+                "status": {"enum":["included","unavailable"]},
+                "at": {"$ref":"#/$defs/moment"},
+                "transitChartId": {"const":"chart-2"},
+                "interpretations": {"type":"array","items":{"$ref":"urn:divine-orchestration:snapshot:v0#/$defs/symbolicMeaning"}}
+              }
+            },
+            {"type":"null"}
+          ]
+        },
+        "ai": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["contextNote","instructions"],
+          "properties": {"contextNote":{"type":"string"},"instructions":{"type":"array","items":{"type":"string"}}}
+        }
+      }
+    }
+  }
+}

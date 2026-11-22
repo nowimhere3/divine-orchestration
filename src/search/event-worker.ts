@@ -1,6 +1,7 @@
 import { loadBrowserEphemeraEngine } from '../engine/browser';
 import { computeTransitEnrichment } from '../interpret/transit-enrichment';
 import { searchEvents } from './events';
+import { searchEventRange } from './range';
 import type { SearchWorkerMessage, SearchWorkerRequest } from './protocol';
 
 const worker = self as unknown as {
@@ -14,6 +15,11 @@ worker.onmessage = async ({ data }) => {
     if (data.kind === 'transit-enrichment') {
       const result = computeTransitEnrichment(engine, data.request);
       worker.postMessage({ type: 'enrichment-complete', result });
+      return;
+    }
+    if (data.kind === 'range-search') {
+      const result = searchEventRange(engine, data.request, progress => worker.postMessage({ type: 'range-progress', progress }));
+      worker.postMessage({ type: 'range-complete', result });
       return;
     }
     const result = searchEvents(engine, data.request, progress => worker.postMessage({ type: 'progress', progress }));

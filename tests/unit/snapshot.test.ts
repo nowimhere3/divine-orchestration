@@ -349,3 +349,53 @@ test('redacted snapshots reject arbitrary invalid aspect, planet and event ident
   // Full export remains backward compatible for existing non-redacted callers
   expect(() => createSnapshotV0({ ...input, aspects: [badAspectId] })).not.toThrow();
 });
+
+test('redacted snapshots accept all canonical EventTiming values (past, present, future, unknown) and reject invalid timings', () => {
+  const origWindow = input.context.eventSearch!.events[0];
+  if (origWindow.kind !== 'aspect-window') throw new Error('expected aspect-window fixture');
+  const sampleMoment = origWindow.passes[0].at;
+  const stationBase = {
+    kind: 'station' as const,
+    id: 'private-station-2000-01-01',
+    planet: origWindow.transit,
+    at: sampleMoment,
+    turns: 'retrograde' as const,
+  };
+
+  for (const timing of ['past', 'present', 'future', 'unknown'] as const) {
+    const redacted = createSnapshotV0({
+      ...input,
+      context: {
+        ...input.context,
+        eventSearch: {
+          ...input.context.eventSearch!,
+          events: [
+            { ...origWindow, timing },
+            { ...stationBase, timing },
+          ],
+        },
+      },
+    }, { redactBirthDetails: true });
+
+    expect(redacted.context.eventSearch?.events).toHaveLength(2);
+    expect(redacted.context.eventSearch?.events.map(e => e.timing)).toEqual([timing, timing]);
+    expect(redacted.context.eventSearch?.events.map(e => e.id)).toEqual(['event-1', 'event-2']);
+    for (const exported of [serializeSnapshot(redacted), renderSnapshotMarkdown(redacted)]) {
+      expect(exported).not.toContain('2000-01-01');
+      expect(exported).not.toContain('private-station');
+    }
+  }
+
+  for (const badTiming of ['active', 'Zelda Secret']) {
+    expect(() => createSnapshotV0({
+      ...input,
+      context: {
+        ...input.context,
+        eventSearch: {
+          ...input.context.eventSearch!,
+          events: [{ ...origWindow, timing: badTiming as typeof origWindow.timing }],
+        },
+      },
+    }, { redactBirthDetails: true })).toThrow(/invalid timing status/i);
+  }
+});

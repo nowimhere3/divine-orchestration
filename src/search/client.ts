@@ -1,9 +1,15 @@
 import type { TransitEnrichmentData, TransitEnrichmentRequest } from '../interpret/transit-types';
 import type { EventSearchRequest, EventSearchResult, SearchProgress } from './events';
+import type { EventRangeSearchRequest, EventRangeSearchResult, RangeSearchProgress } from './range';
 import type { SearchWorkerMessage } from './protocol';
 
 export interface EventSearchJob {
   readonly result: Promise<EventSearchResult>;
+  cancel(): void;
+}
+
+export interface EventRangeSearchJob {
+  readonly result: Promise<EventRangeSearchResult>;
   cancel(): void;
 }
 
@@ -36,6 +42,41 @@ export function startEventSearch(request: EventSearchRequest, progress: (value: 
     worker.onmessageerror = () => settle(() => reject(new Error('The event search worker returned unreadable data.')));
     try {
       worker.postMessage({ request });
+    } catch (error) {
+      settle(() => reject(error));
+    }
+  });
+  return { result, cancel };
+}
+
+export function startEventRangeSearch(
+  request: EventRangeSearchRequest,
+  progress: (value: RangeSearchProgress) => void,
+  createWorker: () => Worker = () => new Worker(new URL('./event-worker.ts', import.meta.url), { type: 'module' }),
+): EventRangeSearchJob {
+  const worker = createWorker();
+  let active = true;
+  let cancel = () => {};
+  const result = new Promise<EventRangeSearchResult>((resolve, reject) => {
+    const settle = (finish: () => void) => {
+      if (!active) return;
+      active = false;
+      worker.terminate();
+      finish();
+    };
+    cancel = () => settle(() => reject(new DOMException('Range event search canceled.', 'AbortError')));
+    worker.onmessage = ({ data }: MessageEvent<SearchWorkerMessage>) => {
+      if (!active) return;
+      switch (data.type) {
+        case 'range-progress': progress(data.progress); break;
+        case 'range-complete': settle(() => resolve(data.result)); break;
+        case 'error': settle(() => reject(new Error(data.message))); break;
+      }
+    };
+    worker.onerror = () => settle(() => reject(new Error('The event search worker could not run.')));
+    worker.onmessageerror = () => settle(() => reject(new Error('The event search worker returned unreadable data.')));
+    try {
+      worker.postMessage({ kind: 'range-search', request });
     } catch (error) {
       settle(() => reject(error));
     }

@@ -1,5 +1,4 @@
-import { angularSeparation, createAspectRuleSet, MAJOR_ASPECT_ANGLES } from '../domain/aspects';
-import type { AspectId } from '../domain/aspects';
+import { createAspectRuleSet, MAJOR_ASPECT_ANGLES } from '../domain/aspects';
 import type { PlanetId } from '../domain/chart';
 import type { AstrologyEvent } from '../domain/event';
 import type { EphemeraEngine, PlanetName } from '../engine/ephemera';
@@ -9,6 +8,13 @@ import { searchEvents } from '../search/events';
 import type { FixedNatalPoint } from '../search/events';
 import { aspectWindows, TIME_EPS, uniqueTimes } from '../search/geometry';
 import type { Sample } from '../search/geometry';
+import {
+  deduplicateStationTts,
+  exactBranchLongitude,
+  isSeriesOpenAtHorizon,
+  isSlowBody,
+  selectSeriesWindows,
+} from '../search/series';
 import { instantFromTt, instantFromUt } from '../time/ephemeris-time';
 import { planetName, wrapDegrees } from '../view/chart-data';
 import { passViews, retrogradeAt } from '../view/event-model';
@@ -54,60 +60,6 @@ function houseCrossingMaxDays(planetId: PlanetId): number {
   }
 }
 
-function isSlowBody(planetId: PlanetId): boolean {
-  return planetId === 'jupiter' || planetId === 'saturn' || planetId === 'uranus' || planetId === 'neptune' || planetId === 'pluto';
-}
-
-/**
- * Conservative upper bound on a single retrograde loop arc (degrees) for each planet.
- * When a planet exits orb inside the search horizon yet remains inside this shadow radius
- * at the horizon edge without having completed a full retrograde+direct miss, an additional
- * pass or orb re-entry beyond the horizon cannot be ruled out.
- */
-const MAX_RETROGRADE_ARC_DEG: Readonly<Record<PlanetId, number>> = {
-  sun: 0,
-  moon: 0,
-  mercury: 17,
-  venus: 18,
-  mars: 20,
-  jupiter: 11,
-  saturn: 8,
-  uranus: 5,
-  neptune: 3.5,
-  pluto: 3.5,
-};
-
-function deduplicateStationTts(stationTts: readonly number[]): readonly number[] {
-  const unique: number[] = [];
-  for (const tt of [...stationTts].sort((a, b) => a - b)) {
-    if (!unique.length || Math.abs(tt - unique[unique.length - 1]) > 0.05) {
-      unique.push(tt);
-    }
-  }
-  return unique;
-}
-
-function exactBranchLongitude(targetLongitudeDeg: number, aspect: AspectId, nearLon: number | null): number {
-  const angle = MAJOR_ASPECT_ANGLES[aspect];
-  const plus = wrapDegrees(targetLongitudeDeg + angle);
-  if (angle === 0 || angle === 180 || nearLon === null) return plus;
-  const minus = wrapDegrees(targetLongitudeDeg - angle);
-  return angularSeparation(nearLon, plus) <= angularSeparation(nearLon, minus) ? plus : minus;
-}
-
-function isSeriesOpenAtHorizon(
-  body: PlanetId,
-  branchLon: number,
-  allowedOrbDeg: number,
-  horizonLon: number | null,
-  stationsBetweenEdgeAndWindow: number,
-): boolean {
-  if (body === 'sun' || body === 'moon') return false;
-  if (stationsBetweenEdgeAndWindow >= 2) return false;
-  if (horizonLon === null) return true;
-  return angularSeparation(horizonLon, branchLon) <= allowedOrbDeg + MAX_RETROGRADE_ARC_DEG[body];
-}
-
 function ttToEpochMs(engine: EphemeraEngine, jdTt: number): number {
   return jdTtToResolvedTime(engine, jdTt).epochMs;
 }
@@ -140,65 +92,6 @@ function pickNearestPass(passes: readonly TransitPassSummary[], selectedTt: numb
   const exact = passes.filter(p => p.state !== 'near-miss');
   const pool = exact.length ? exact : passes;
   return [...pool].sort((a, b) => Math.abs(a.jdTt - selectedTt) - Math.abs(b.jdTt - selectedTt))[0] ?? null;
-}
-
-interface SeriesWindowCandidate<T> {
-  readonly start: number;
-  readonly end: number;
-  readonly repLon: number | null;
-  readonly item: T;
-}
-
-/**
- * Selects the active aspect window containing `selectedTt` together with any adjacent windows
- * bridged across a chunk seam or across a single retrograde turnaround station of the same
- * aspect branch (e.g., direct -> retrograde -> direct triple-pass series).
- */
-function selectSeriesWindows<T>(
-  candidates: readonly SeriesWindowCandidate<T>[],
-  body: PlanetId,
-  selectedTt: number,
-  stationTts: readonly number[],
-): readonly T[] {
-  if (!candidates.length) return [];
-  const sorted = [...candidates].sort((a, b) => a.start - b.start || a.end - b.end);
-  const uniqueStations: number[] = [];
-  for (const tt of [...stationTts].sort((a, b) => a - b)) {
-    if (!uniqueStations.length || Math.abs(tt - uniqueStations[uniqueStations.length - 1]) > 0.05) {
-      uniqueStations.push(tt);
-    }
-  }
-
-  let seedIdx = sorted.findIndex(w => selectedTt >= w.start - 0.05 && selectedTt <= w.end + 0.05);
-  if (seedIdx === -1) {
-    let bestDist = Infinity;
-    sorted.forEach((w, i) => {
-      const mid = Number.isFinite(w.start) && Number.isFinite(w.end) ? (w.start + w.end) / 2 : selectedTt;
-      const dist = Math.abs(mid - selectedTt);
-      if (dist < bestDist) {
-        bestDist = dist;
-        seedIdx = i;
-      }
-    });
-  }
-
-  const areChained = (left: SeriesWindowCandidate<T>, right: SeriesWindowCandidate<T>): boolean => {
-    if (right.start <= left.end + 0.1) return true;
-    if (body === 'sun' || body === 'moon') return false;
-    const stationsBetween = uniqueStations.filter(tt => tt > left.end - 0.1 && tt < right.start + 0.1);
-    if (stationsBetween.length !== 1) return false;
-    if (left.repLon !== null && right.repLon !== null && angularSeparation(left.repLon, right.repLon) > 25) {
-      return false;
-    }
-    return true;
-  };
-
-  let lo = seedIdx;
-  while (lo > 0 && areChained(sorted[lo - 1], sorted[lo])) lo -= 1;
-  let hi = seedIdx;
-  while (hi < sorted.length - 1 && areChained(sorted[hi], sorted[hi + 1])) hi += 1;
-
-  return sorted.slice(lo, hi + 1).map(c => c.item);
 }
 
 function solveAnglePairWindow(

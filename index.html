@@ -167,37 +167,139 @@
       </section>
 
       <section id="view-events" class="view" data-page="events" hidden>
-        <div class="view-intro"><p class="eyebrow">Sky events</p></div>
+        <div class="view-intro"><p class="eyebrow">Sky &amp; chart research</p></div>
         <section class="panel event-search" aria-labelledby="event-heading">
           <div class="section-head">
             <div>
               <h2 id="event-heading" tabindex="-1">Planetary events</h2>
-              <p class="lede">Exact contacts between the transiting sky and your natal planets, plus planetary stations, grouped by month.</p>
+              <p class="lede">Explore planetary contacts, angles, house crossings and stations across multi-year intervals, or focus on life themes and custom chart factors.</p>
             </div>
           </div>
+          <div id="research-modes" class="research-modes" role="tablist" aria-label="Research mode">
+            <button id="research-mode-everything" type="button" role="tab" aria-selected="true" data-research-mode="everything">Explore Everything</button>
+            <button id="research-mode-themes" type="button" role="tab" aria-selected="false" data-research-mode="themes">Life Themes</button>
+            <button id="research-mode-custom" type="button" role="tab" aria-selected="false" data-research-mode="custom">Custom Search</button>
+          </div>
+          <div id="research-chart-status" class="research-chart-status" role="status" aria-live="polite"></div>
           <form id="event-form">
             <fieldset id="event-inputs" disabled>
-              <legend class="sr-only">Event search interval</legend>
-              <label>From (UTC midnight)<input id="event-from" type="date" required></label>
-              <label>To (UTC midnight)<input id="event-to" type="date" required></label>
-              <label>Transiting planet<select id="event-body"><option value="all">All planets</option></select></label>
-              <button class="primary" type="submit">Search events</button>
+              <legend class="sr-only">Research search parameters</legend>
+              <div class="research-range-row">
+                <label>From (UTC midnight)<input id="event-from" type="date" min="1550-01-01" max="2650-01-03" required></label>
+                <label>To (UTC midnight)<input id="event-to" type="date" min="1550-01-01" max="2650-01-03" required></label>
+                <label>Transiting planet<select id="event-body"><option value="all">All planets</option></select></label>
+                <button class="primary" type="submit">Search events</button>
+              </div>
+              <div id="research-range-presets" class="research-presets" role="group" aria-label="Quick date ranges">
+                <button type="button" class="secondary" data-range-preset="30d">30 days</button>
+                <button type="button" class="secondary" data-range-preset="90d">90 days</button>
+                <button type="button" class="secondary" data-range-preset="12m">12 months</button>
+                <button type="button" class="secondary" data-range-preset="2y">2 years</button>
+                <button type="button" class="secondary" data-range-preset="5y">5 years</button>
+                <button type="button" class="secondary" data-range-preset="10y-slow">10 years (slow planets)</button>
+              </div>
+              <div class="research-moon-row">
+                <label class="check"><input id="research-include-moon" type="checkbox" checked> Include fast Moon transits</label>
+                <p id="research-coverage-note" class="hint" role="status"></p>
+              </div>
+              <details id="research-configuration" class="research-disclosure" open>
+                <summary>Search configuration</summary>
+                <div class="research-clear-row">
+                  <button id="research-clear-selections" type="button" class="secondary">Clear selections</button>
+                  <p id="research-clear-status" class="hint" role="status"></p>
+                </div>
+                <details id="research-panel-everything-adv" class="research-disclosure">
+                  <summary>Calculation options (orbs, angles &amp; house crossings)</summary>
+                  <div class="research-adv-grid">
+                    <label>Orb policy
+                      <select id="research-orb-policy">
+                        <option value="transit-focused" selected>Transit-focused (speed-aware)</option>
+                        <option value="chart-v0">Chart v0 (8°/6°/4°)</option>
+                        <option value="custom">Custom orbs</option>
+                      </select>
+                    </label>
+                    <label class="check"><input id="research-comp-angles" type="checkbox" checked> Include natal angle contacts (ASC/MC/DSC/IC)</label>
+                    <label class="check"><input id="research-comp-ingresses" type="checkbox" checked> Include natal house crossings</label>
+                    <label class="check"><input id="research-comp-stations" type="checkbox" checked> Include planetary stations</label>
+                  </div>
+                  <div id="research-custom-orbs" class="research-custom-orbs" hidden></div>
+                </details>
+                <div id="research-panel-themes" class="research-mode-panel" hidden></div>
+                <div id="research-panel-custom" class="research-mode-panel" hidden></div>
+              </details>
             </fieldset>
             <button id="event-cancel" type="button" hidden>Cancel search</button>
           </form>
           <progress id="event-progress" aria-label="Event search progress" hidden></progress>
-          <p class="form-note" id="event-status" role="status">Search up to 366 days for transits to your natal planets and planetary stations.</p>
+          <p class="form-note" id="event-status" role="status">Search up to 5 years (or 10 years for slow planets) for planetary contacts, angles, house crossings and stations.</p>
+          <p class="form-note event-stale" id="event-stale" role="status" hidden>These results are from your previous search settings. Choose Search events to update them.</p>
+          <div id="event-results-heading-row" class="event-results-head" hidden>
+            <h3 id="event-results-heading">Research results</h3>
+            <button id="export-research-shortcut" type="button" class="secondary" aria-describedby="event-export-scope">Export research shortcut</button>
+          </div>
           <div id="event-toolbar" class="event-toolbar" hidden>
+            <fieldset id="research-scope-group" class="segmented" hidden>
+              <legend>Scope</legend>
+              <label class="seg"><input type="radio" name="research-scope" value="relevant" checked><span>Relevant</span></label>
+              <label class="seg"><input type="radio" name="research-scope" value="primary"><span>Primary</span></label>
+              <label class="seg"><input type="radio" name="research-scope" value="context"><span>Broader context</span></label>
+              <label class="seg"><input type="radio" name="research-scope" value="all"><span>All</span></label>
+            </fieldset>
             <fieldset class="segmented">
               <legend>Show</legend>
               <label class="seg"><input type="radio" name="event-filter" value="exact" checked><span>Exact contacts &amp; stations</span></label>
               <label class="seg"><input type="radio" name="event-filter" value="station"><span>Stations only</span></label>
               <label class="seg"><input type="radio" name="event-filter" value="all"><span>All windows</span></label>
             </fieldset>
+            <label class="toolbar-select">Sort
+              <select id="research-sort">
+                <option value="chronological" selected>Chronological</option>
+                <option value="relevance">Relevance score</option>
+                <option value="impact">Personal Impact</option>
+                <option id="research-priority" value="priority" disabled>Theme research priority</option>
+              </select>
+            </label>
+            <label class="check" id="research-moon-filter-wrap" hidden><input id="research-show-moon" type="checkbox" checked> Show Moon events</label>
+            <label class="check" id="research-converge-wrap" hidden><input id="research-converge-only" type="checkbox"> Multi-theme only</label>
+            <label class="check" id="research-theme-match-wrap" hidden><input id="research-theme-match" type="checkbox"> Match selected themes</label>
             <label class="check"><input id="event-details" type="checkbox"> Show details</label>
+            <fieldset class="event-impact-controls">
+              <legend>Impact and ranking</legend>
+              <label class="check"><input id="research-impact-enabled" type="checkbox"> Use Impact cutoff</label>
+              <label for="research-impact-cutoff">Minimum Personal Impact <output id="research-impact-value" for="research-impact-cutoff">Off</output></label>
+              <input id="research-impact-cutoff" type="range" min="0" max="100" step="1" value="0" disabled>
+              <label class="toolbar-select">Top
+                <select id="research-top">
+                  <option value="all">All</option>
+                  <option value="10">10</option>
+                  <option value="20">20</option>
+                  <option value="50">50</option>
+                </select>
+              </label>
+              <p class="hint">Top ranks by Impact and groups matching return windows. Theme priority sorts by 70% Impact and 30% Relevance when themes are selected.</p>
+            </fieldset>
             <p id="event-summary" class="form-note" role="status"></p>
           </div>
+          <details id="event-convergence" class="research-disclosure event-convergence" hidden>
+            <summary>Overlapping transits</summary>
+            <div class="event-convergence-controls">
+              <label>Minimum Impact for overlaps <input id="event-convergence-minimum" type="number" min="0" max="100" step="1" value="65"></label>
+              <div class="event-convergence-presets" aria-label="Overlap Impact presets" role="group">
+                <button type="button" class="secondary" data-overlap-minimum="65">65+</button>
+                <button type="button" class="secondary" data-overlap-minimum="80">80+</button>
+                <button type="button" class="secondary" data-overlap-minimum="90">90+</button>
+              </div>
+              <label class="check"><input id="event-convergence-moon" type="checkbox"> Include Moon timing markers</label>
+            </div>
+            <p class="hint">This threshold is independent of the event-list filters. An overlap needs two distinct planets. The Moon can mark timing.</p>
+            <p id="event-convergence-coverage" class="hint"></p>
+            <div id="event-convergence-results"></div>
+          </details>
           <div id="event-results"></div>
+          <div id="event-export-row" class="event-export-row" hidden>
+            <button id="export-research" type="button" class="primary" aria-describedby="event-export-scope">Export Research</button>
+            <p id="event-export-scope" class="hint">Export Studio starts with these filtered results across all pages. You can also choose relevant findings or the complete search.</p>
+          </div>
         </section>
       </section>
 
@@ -233,9 +335,15 @@
           <div class="section-head">
             <div>
               <h2 id="export-heading" tabindex="-1">AI Export Studio</h2>
-              <p class="lede">Prepare a snapshot of the calculated chart to paste into an AI conversation you control. Nothing is uploaded from here.</p>
+              <p class="lede">Prepare a chart snapshot or an Events research timeline for an AI conversation you control. Nothing is uploaded from here.</p>
             </div>
           </div>
+          <fieldset class="segmented export-workflow-switch">
+            <legend>Export workflow</legend>
+            <label class="seg"><input id="workflow-snapshot" type="radio" name="export-workflow" value="snapshot" checked><span>Chart snapshot</span></label>
+            <label class="seg"><input id="workflow-research" type="radio" name="export-workflow" value="research"><span>Events research</span></label>
+          </fieldset>
+          <div id="snapshot-workflow">
           <p id="export-source" class="source-note" role="status"></p>
           <ol class="stepper" aria-label="Export steps">
             <li id="step-configure" aria-current="step"><span class="step-number">1</span> Configure</li>
@@ -335,6 +443,117 @@
               </fieldset>
               <blockquote id="interpretation-prompt"></blockquote>
               <button id="export-copy-prompt" type="button">Copy interpretation prompt</button>
+            </section>
+          </div>
+          </div>
+          <div id="research-workflow" hidden>
+            <div class="moment-card research-export-source">
+              <div>
+                <h3>Events search</h3>
+                <p id="research-export-source" class="hint" role="status">Run a search in Events, then choose Export Research.</p>
+                <p id="research-export-scope-hint" class="hint" hidden></p>
+              </div>
+              <a class="button-link" href="#events">Back to Events</a>
+            </div>
+            <p id="research-export-status" class="form-note" role="status"></p>
+            <form id="research-export-form" class="step-panel" hidden>
+              <fieldset id="research-export-controls">
+                <legend class="sr-only">Research export settings</legend>
+                <fieldset class="choice-group">
+                  <legend>Export scope</legend>
+                  <div class="choice">
+                    <input type="radio" id="research-mode-current" name="research-export-mode" value="current" aria-describedby="research-current-hint" checked>
+                    <label for="research-mode-current">Current filtered results <span id="research-current-count"></span></label>
+                    <p id="research-current-hint" class="hint">The Events selection at handoff, across every page. For Top N, each selected group contributes its representative event.</p>
+                  </div>
+                  <div class="choice">
+                    <input type="radio" id="research-mode-relevant" name="research-export-mode" value="relevant" aria-describedby="research-relevant-hint">
+                    <label for="research-mode-relevant">Relevant findings <span id="research-relevant-count"></span></label>
+                    <p id="research-relevant-hint" class="hint">Primary and secondary events in the original query. This choice uses theme relevance across the search.</p>
+                  </div>
+                  <div class="choice">
+                    <input type="radio" id="research-mode-complete" name="research-export-mode" value="complete" aria-describedby="research-complete-hint">
+                    <label for="research-mode-complete">Complete original research <span id="research-complete-count"></span></label>
+                    <p id="research-complete-hint" class="hint">Every event authorized by the original query, including broader context when that query retains it.</p>
+                  </div>
+                  <label class="check" id="research-linked-wrap" hidden><input id="research-linked-evidence" type="checkbox"> <span id="research-linked-label">Include linked return windows</span></label>
+                  <p id="research-selection-counts" class="hint" role="status"></p>
+                </fieldset>
+                <fieldset class="event-options">
+                  <legend>Privacy</legend>
+                  <div class="option-grid">
+                    <label>Birth details to share
+                      <select id="research-birth-privacy" aria-describedby="research-privacy-hint">
+                        <option value="redacted" selected>Redacted</option>
+                        <option value="full">Full birth details</option>
+                      </select>
+                    </label>
+                    <label>Event dates
+                      <select id="research-date-privacy" aria-describedby="research-privacy-hint">
+                        <option value="relative" selected>Relative day offsets</option>
+                        <option value="calendar">Calendar dates</option>
+                        <option value="omit">Omit timestamps</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p id="research-privacy-hint" class="hint"></p>
+                </fieldset>
+                <fieldset class="event-options">
+                  <legend>Interpretation context (optional)</legend>
+                  <label class="check"><input id="research-opt-natal" type="checkbox"> Include natal interpretation</label>
+                  <label class="check"><input id="research-opt-transit" type="checkbox" aria-describedby="research-selected-moment-hint"> Include selected-moment transit interpretation</label>
+                  <p id="research-selected-moment-hint" class="hint">Adds a symbolic reading for the current Time Machine moment. The research timeline comes from your Events search.</p>
+                </fieldset>
+                <fieldset class="event-options">
+                  <legend>Files</legend>
+                  <div class="option-grid">
+                    <label>File format
+                      <select id="research-export-format">
+                        <option value="markdown" selected>Markdown</option>
+                        <option value="json">JSON</option>
+                      </select>
+                    </label>
+                    <label>Target size per event file
+                      <select id="research-export-part-size" aria-describedby="research-size-hint">
+                        <option value="60000">Small · 60 KB</option>
+                        <option value="standard" selected>Standard · 180 KB</option>
+                        <option value="600000">Large · 600 KB</option>
+                        <option value="unsplit">One event file</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p id="research-size-hint" class="hint">Smaller files are easier to share one at a time. Very large files may exceed your AI's context window.</p>
+                </fieldset>
+                <button type="submit" class="primary">Prepare research export</button>
+              </fieldset>
+            </form>
+            <section id="research-export-output" class="step-panel" aria-labelledby="research-export-preview-heading" hidden>
+              <div class="step-head">
+                <h3 id="research-export-preview-heading" tabindex="-1">Preview research files</h3>
+                <button id="research-export-back" type="button" class="secondary">Back to research settings</button>
+              </div>
+              <ul id="research-export-summary" class="chips" aria-label="Research export summary"></ul>
+              <ul id="research-export-details" class="research-export-details"></ul>
+              <details class="research-disclosure">
+                <summary>Research overview</summary>
+                <ul id="research-export-overview" class="research-export-details"></ul>
+              </details>
+              <label id="research-file-picker">Preview file
+                <select id="research-export-file"></select>
+              </label>
+              <p id="research-file-details" class="hint"></p>
+              <label class="studio-preview">Research file preview<textarea id="research-export-preview" readonly rows="12"></textarea></label>
+              <div class="export-actions">
+                <button id="research-copy-file" type="button">Copy file</button>
+                <button id="research-download-file" type="button">Download file</button>
+                <button id="research-download-zip" type="button" class="primary">Download ZIP</button>
+              </div>
+              <section class="prompt-card" aria-labelledby="research-prompt-heading">
+                <h3 id="research-prompt-heading">Use with an external AI</h3>
+                <p id="research-ai-context" class="hint"></p>
+                <ol id="research-ai-steps"></ol>
+                <button id="research-copy-prompt" type="button">Copy research instructions</button>
+              </section>
             </section>
           </div>
         </section>

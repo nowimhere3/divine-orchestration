@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:divine-orchestration:research-manifest:v1",
+  "title": "Divine Orchestration research manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema","schemaVersion","packageId","format","research","partByteBudget","parts"],
+  "properties": {
+    "schema": {"const":"divine-orchestration/research-manifest"},
+    "schemaVersion": {"const":1},
+    "packageId": {"$ref":"urn:divine-orchestration:research-export:v1#/$defs/packageId"},
+    "format": {"$ref":"urn:divine-orchestration:research-export:v1#/$defs/format"},
+    "research": {"$ref":"urn:divine-orchestration:research-export:v1#/$defs/research"},
+    "partByteBudget": {"anyOf":[{"type":"integer","minimum":1},{"type":"null"}]},
+    "parts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "partNumber",
+          "totalParts",
+          "filename",
+          "eventCount",
+          "eventIndexRange",
+          "orderSpan",
+          "bytes",
+          "estimatedTokens",
+          "exceedsPartBudget",
+          "sha256"
+        ],
+        "properties": {
+          "partNumber": {"type":"integer","minimum":1},
+          "totalParts": {"type":"integer","minimum":1},
+          "filename": {"type":"string","pattern":"^\\d+-of-\\d+\\.(json|md)$"},
+          "eventCount": {"type":"integer","minimum":0},
+          "eventIndexRange": {"$ref":"urn:divine-orchestration:research-export:v1#/$defs/eventIndexRange"},
+          "orderSpan": {
+            "anyOf": [
+              {
+                "type": "array",
+                "prefixItems": [
+                  {"$ref":"urn:divine-orchestration:research-export:v1#/$defs/moment"},
+                  {"$ref":"urn:divine-orchestration:research-export:v1#/$defs/moment"}
+                ],
+                "minItems": 2,
+                "maxItems": 2
+              },
+              {"type":"null"}
+            ]
+          },
+          "bytes": {"type":"integer","minimum":1},
+          "estimatedTokens": {"type":"integer","minimum":1},
+          "exceedsPartBudget": {"type":"boolean"},
+          "sha256": {"$ref":"urn:divine-orchestration:research-export:v1#/$defs/sha256"}
+        }
+      },
+      "minItems": 1
+    }
+  }
+}

@@ -1,5 +1,13 @@
 import type { PlanetId } from '../domain/chart';
 import type { AspectPass, AstrologyEvent, EventMoment } from '../domain/event';
+import { sortByRelevance } from '../research/relevance';
+import type { EvaluatedEvent } from '../research/relevance';
+import type {
+  AngleAspectWindowEvent,
+  RangeAspectPass,
+  RangeAspectWindowEvent,
+  RangeEvent,
+} from '../search/range';
 
 /** What the Events view shows: exact contacts and stations by default. */
 export type EventFilter = 'exact' | 'station' | 'all';
@@ -8,6 +16,8 @@ type Station = Extract<AstrologyEvent, { kind: 'station' }>;
 type Window = Extract<AstrologyEvent, { kind: 'aspect-window' }>;
 
 export type EventClass = 'station' | 'exact' | 'near-miss' | 'window';
+export type RangeEventClass = EventClass | 'house-ingress';
+export type EventSortOrder = 'chronological' | 'relevance';
 
 const momentMs = (moment: EventMoment | null | undefined) => {
   if (!moment?.utc) return null;
@@ -109,4 +119,102 @@ export function summarize(events: readonly AstrologyEvent[]) {
   const counts = { station: 0, exact: 0, 'near-miss': 0, window: 0 } satisfies Record<EventClass, number>;
   for (const event of events) counts[classify(event)]++;
   return counts;
+}
+
+/* -------------------------------------------------------------------------- */
+/* U6A RangeEvent & U6B EvaluatedEvent view helpers                           */
+/* -------------------------------------------------------------------------- */
+
+export function classifyRangeEvent(event: RangeEvent): RangeEventClass {
+  if (event.kind === 'station') return 'station';
+  if (event.kind === 'house-ingress') return 'house-ingress';
+  if (event.passes.some(isExactPass)) return 'exact';
+  return event.passes.length ? 'near-miss' : 'window';
+}
+
+export function matchesRangeFilter(event: RangeEvent, filter: EventFilter): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'station') return event.kind === 'station';
+  return event.kind === 'station' || event.kind === 'house-ingress' || event.passes.some(isExactPass);
+}
+
+export function rangePrimaryMoment(event: RangeEvent): EventMoment | null {
+  if (event.kind === 'station' || event.kind === 'house-ingress') return event.at;
+  const pass = event.passes.find(isExactPass) ?? event.passes[0];
+  return pass?.at ?? event.startsAt ?? event.endsAt;
+}
+
+export function rangeMomentEpochMs(moment: EventMoment | null | undefined): number | null {
+  if (!moment) return null;
+  const utcMs = momentMs(moment);
+  if (utcMs !== null) return utcMs;
+  if (moment.jdUt !== null && Number.isFinite(moment.jdUt)) {
+    return Math.round((moment.jdUt - 2440587.5) * 86_400_000);
+  }
+  if (moment.jdTt !== null && Number.isFinite(moment.jdTt)) {
+    return Math.round((moment.jdTt - 2440587.5) * 86_400_000);
+  }
+  return null;
+}
+
+function rangeSortKey(event: RangeEvent): number {
+  const moment = rangePrimaryMoment(event);
+  return momentMs(moment) ?? (moment?.jdTt === null || !moment ? Infinity : (moment.jdTt - 2440587.5) * 86_400_000);
+}
+
+export function sortEvaluatedEvents(
+  items: readonly EvaluatedEvent[],
+  order: EventSortOrder = 'chronological',
+): readonly EvaluatedEvent[] {
+  if (order === 'relevance') {
+    return sortByRelevance(items);
+  }
+  return items
+    .map((item, index) => ({ item, index, key: rangeSortKey(item.event) }))
+    .sort((a, b) => a.key - b.key || a.index - b.index)
+    .map(entry => entry.item);
+}
+
+export interface EvaluatedMonthGroup {
+  readonly key: string;
+  readonly label: string;
+  readonly items: readonly EvaluatedEvent[];
+}
+
+export function rangeEventMonth(event: RangeEvent): { readonly key: string; readonly label: string } {
+  const ms = rangeMomentEpochMs(rangePrimaryMoment(event));
+  if (ms === null) return { key: 'unavailable', label: 'Date unavailable' };
+  const date = new Date(ms);
+  return { key: date.toISOString().slice(0, 7), label: monthFormat.format(date) };
+}
+
+export function groupEvaluatedByMonth(items: readonly EvaluatedEvent[]): readonly EvaluatedMonthGroup[] {
+  const groups: { key: string; label: string; items: EvaluatedEvent[] }[] = [];
+  for (const item of items) {
+    const month = rangeEventMonth(item.event);
+    const last = groups.at(-1);
+    if (last?.key === month.key) last.items.push(item);
+    else groups.push({ ...month, items: [item] });
+  }
+  return groups;
+}
+
+export interface RangePassView {
+  readonly pass: RangeAspectPass;
+  readonly retrograde: boolean | null;
+  readonly number: number | null;
+}
+
+export function rangePassViews(
+  event: RangeAspectWindowEvent | AngleAspectWindowEvent,
+): readonly RangePassView[] {
+  return event.passes.map(pass => ({
+    pass,
+    retrograde: pass.retrograde,
+    number: pass.passNumberInSeries,
+  }));
+}
+
+export function rangeExactCount(event: RangeAspectWindowEvent | AngleAspectWindowEvent): number {
+  return event.passes.filter(isExactPass).length;
 }

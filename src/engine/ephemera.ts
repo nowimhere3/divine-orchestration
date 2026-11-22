@@ -12,6 +12,7 @@ const engine = Object.freeze({
   dataMode: '1as',
   frame: 'apparent geocentric tropical ecliptic of date',
 } as const);
+export { engine as EPHEMERA_PROVENANCE };
 
 const planets = {
   Sun: Body.Sun, Moon: Body.Moon, Mercury: Body.Mercury, Venus: Body.Venus,

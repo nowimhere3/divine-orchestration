@@ -3,8 +3,9 @@ import type { AspectFact, AspectRuleSetV0 } from '../domain/aspects';
 import { PLANET_IDS } from '../domain/chart';
 import type { Chart, ChartWarning, PlanetRef } from '../domain/chart';
 import type { AstrologyEvent, EventMoment, SymbolicMeaning } from '../domain/event';
-import { isLocalEphemeraEngine } from '../engine/ephemera';
+import { EPHEMERA_PROVENANCE, isLocalEphemeraEngine } from '../engine/ephemera';
 import type { EphemeraEngine } from '../engine/ephemera';
+import type { RangeEvent } from '../search/range';
 import { interpretNatalChart, natalSymbolicMeanings } from '../interpret/natal';
 import { interpretTransits, transitSymbolicMeanings } from '../interpret/transits';
 import { signMeta } from '../knowledge';
@@ -18,9 +19,38 @@ const VALID_UNAVAILABLE_REASONS = new Set<string>([
   'unknown-birth-time', 'missing-location', 'invalid-input',
   'outside-coverage', 'unsupported-body', 'calculation-unavailable',
 ]);
-const VALID_EVENT_TIMINGS = new Set<string>(['past', 'active', 'future']);
+const VALID_EVENT_TIMINGS = new Set<string>(['past', 'present', 'future', 'unknown']);
 const VALID_STATION_TURNS = new Set<string>(['direct', 'retrograde']);
 const VALID_PASS_STATES = new Set<string>(['exact', 'refined', 'near-miss']);
+const VALID_CHART_WARNINGS = new Set<ChartWarning>([
+  'historical-zone-offset-uncertain', 'offset-override-differs-from-zone',
+  'pre-utc-ut1-approximation', 'modeled-delta-t', 'future-utc-assumption',
+  'near-coverage-edge', 'polar-house-fallback',
+]);
+export const isSnapshotChartWarning = (warning: ChartWarning): boolean => VALID_CHART_WARNINGS.has(warning);
+
+/** Convert the two supported U6A variants to the published v0 event shape. */
+export function toSnapshotV0Events(events: readonly RangeEvent[]): readonly AstrologyEvent[] {
+  const projected: AstrologyEvent[] = [];
+  for (const event of events) {
+    const { id, timing } = event;
+    if (event.kind === 'station') {
+      projected.push({ id, timing, kind: event.kind, planet: event.planet, at: event.at, turns: event.turns });
+    } else if (event.kind === 'aspect-window') {
+      const { kind, transit, target, aspect, startsAt, endsAt, clippedStart, clippedEnd, allowedOrbDeg } = event;
+      const passes = event.passes.map(({ at, state, residualDeg, toleranceDeg }) => ({ at, state, residualDeg, toleranceDeg }));
+      projected.push({ id, timing, kind, transit, target, aspect, startsAt, endsAt, clippedStart, clippedEnd, allowedOrbDeg, passes });
+    }
+  }
+  return projected;
+}
+
+/** External engine labels are free text. Redacted exports retain only bundled provenance. */
+function redactedEngine(engine: EngineProvenance | null): EngineProvenance | null {
+  if (!engine || !Object.entries(EPHEMERA_PROVENANCE).every(([key, expected]) =>
+    engine[key as keyof EngineProvenance] === expected)) return null;
+  return EPHEMERA_PROVENANCE;
+}
 
 export interface SnapshotContext {
   readonly selectedAt: EventMoment | null;
@@ -320,7 +350,7 @@ export function createSnapshotV0(input: SnapshotInput, {
     }
     const warnings: ChartWarning[] = [...new Set([
       ...chart.warnings, ...(time.kind === 'resolved' ? time.warnings : []),
-    ])].sort();
+    ])].filter(warning => !redactBirthDetails || isSnapshotChartWarning(warning)).sort();
     return {
       id: idMap.get(id)!, kind,
       label: redactBirthDetails ? null : label,
@@ -361,6 +391,9 @@ export function createSnapshotV0(input: SnapshotInput, {
       start: redactBirthDetails ? hiddenMoment : search.start,
       end: redactBirthDetails ? hiddenMoment : search.end,
       events: search.events.map((event, index) => {
+        if (event.kind !== 'aspect-window' && event.kind !== 'station') {
+          throw new TypeError('SnapshotV0 requires aspect windows or stations. Use toSnapshotV0Events for range results.');
+        }
         if (redactBirthDetails) return redactEvent(event, `event-${index + 1}`, ref);
         if (event.kind === 'station') return { ...event, planet: ref(event.planet) };
         return { ...event, transit: ref(event.transit), target: ref(event.target) };
@@ -386,7 +419,7 @@ export function createSnapshotV0(input: SnapshotInput, {
   const snapshot: SnapshotV0 = {
     schema: 'divine-orchestration/snapshot', schemaVersion: 0,
     privacy: redactBirthDetails ? 'birth-details-redacted' : 'full',
-    engine: input.engine,
+    engine: redactBirthDetails ? redactedEngine(input.engine) : input.engine,
     aspectRules: createAspectRuleSet(input.aspectRules.orbsDeg),
     charts, aspects, context, interpretations,
   };

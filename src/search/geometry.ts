@@ -30,7 +30,7 @@ type Samples = (tt: number) => Sample;
 type CrossingSeed = (target: number, start: number, end: number) => number | null;
 
 export const normalize = (value: number) => (value % 360 + 360) % 360;
-const signedArc = (to: number, from: number) => normalize(to - from + 180) - 180;
+export const signedArc = (to: number, from: number) => normalize(to - from + 180) - 180;
 const levels = (longitude: number, angle: number) => [...new Set([normalize(longitude - angle), normalize(longitude + angle)])];
 
 export function uniqueTimes(times: readonly number[]) {
@@ -41,7 +41,7 @@ export function uniqueTimes(times: readonly number[]) {
   return result;
 }
 
-function crossings(track: readonly Sample[], targets: readonly number[], sample: Samples, seed?: CrossingSeed) {
+export function crossings(track: readonly Sample[], targets: readonly number[], sample: Samples, seed?: CrossingSeed) {
   const found: Contact[] = [];
   for (let index = 1; index < track.length; index++) {
     const left = track[index - 1];

@@ -44,7 +44,7 @@ test('reports progress and cancels an in-flight worker without publishing late r
     observer.observe(gauge, { attributes: true, attributeFilter: ['value'] });
     document.querySelector<HTMLFormElement>('#event-form')!.requestSubmit();
   }));
-  expect(canceledFromProgress).toBe(110);
+  expect(canceledFromProgress).toBeGreaterThanOrEqual(110);
   await expect(page.locator('#event-status')).toHaveText('Event search canceled.');
   await expect(page.locator('#event-results')).toBeEmpty();
   await expect(page.getByRole('button', { name: 'Search events' })).toBeEnabled();

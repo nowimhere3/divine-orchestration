@@ -31,6 +31,7 @@ import { mountLunarCard } from './lunar-card';
 import { mountProfiles } from './profile-panel';
 import type { ProfileController } from './profile-panel';
 import { mountExportStudio } from './export-studio';
+import { mountResearchExportStudio } from './research-export-studio';
 import { mountReadingPanel } from './reading-panel';
 import { mountZonePicker } from './zone-picker';
 
@@ -160,6 +161,7 @@ export function mountObservatory(engine: EphemeraEngine) {
       ? `Export is blocked: your new birth details were not calculated. It would describe the ${applied.demo ? 'Greenwich demonstration chart' : 'previous chart'} (${applied.text}). Open Edit birth details and calculate first.`
       : applied.demo ? `Export source: ${base}. Calculate your own birth details to export them.` : `Export source: ${base}.`;
     sourceEl.dataset.state = state;
+    researchExport.syncChart();
 
     const activeName = activeProfileId ? natal?.label ?? null : null;
     if (pending) {
@@ -216,18 +218,38 @@ export function mountObservatory(engine: EphemeraEngine) {
     chartProfileLoad.disabled = false;
   }
   let frame = 0;
+  function flushChartFrame() {
+    if (!frame) return;
+    cancelAnimationFrame(frame);
+    redraw();
+  }
   const targets = () => PLANET_IDS.map(planetId => ({
       chartId: 'natal', planetId, longitudeDeg: natalPoints.get(planetId)?.longitudeDeg ?? null,
     }));
-  const eventSearch = mountEventSearch(engine.modelDeltaTSeconds, () => ({
-    targets: targets(),
-    referenceTt: selectedTt,
-  }), signal);
+  let timelineControl: { setInstant(epochMs: number): void } | undefined;
+  const researchExport = mountResearchExportStudio(engine, () => natal, () => {
+    flushChartFrame();
+    return transitChart;
+  }, () => birthEdited || attemptFailed
+    ? 'Birth details changed. Calculate the chart, then open Events to search and export the current chart.' : '', signal);
+  const eventSearch = mountEventSearch(
+    engine.modelDeltaTSeconds,
+    () => ({
+      chart: natal,
+      referenceTt: selectedTt,
+    }),
+    {
+      onJumpToEpoch: epochMs => {
+        timelineControl?.setInstant(epochMs);
+        if (location.hash !== '#chart') location.hash = 'chart';
+      },
+      onExportResearch: researchExport.accept,
+      onExportSourceChanged: researchExport.invalidateQuery,
+    },
+    signal,
+  );
   const exportStudio = mountExportStudio(engine, () => {
-    if (frame) {
-      cancelAnimationFrame(frame);
-      redraw();
-    }
+    flushChartFrame();
     if (!natal || !transitChart) return null;
     const { utc, jdUt, jdTt } = transitChart.time;
     const selectedAt = { utc, jdUt, jdTt };
@@ -238,7 +260,6 @@ export function mountObservatory(engine: EphemeraEngine) {
     } };
   }, signal, () => birthEdited && (attemptFailed || !birthDialog.open)
     ? 'Export is blocked because your new birth details have not been calculated. Open Edit birth details and calculate first.' : '');
-  let timelineControl: { setInstant(epochMs: number): void } | undefined;
   const readingPanel = mountReadingPanel({
     onSelectKey: select,
     onEditBirth: () => {
@@ -252,6 +273,9 @@ export function mountObservatory(engine: EphemeraEngine) {
       if (activeMode === 'transits') scheduleTransitEnrichment();
     },
   }, signal);
+  byId('personal-reading').addEventListener('click', event => {
+    if (event.target instanceof Element && event.target.closest('a[href="#export"]')) researchExport.showSnapshot();
+  }, { signal });
   const lunarCard = mountLunarCard(engine, {
     onInspectMoon: () => select('transit/moon'),
     onObserverChange: () => showInspection(),
@@ -527,7 +551,8 @@ export function mountObservatory(engine: EphemeraEngine) {
     birthAspects = chartAspects(natalPoints);
     selectedKey = '';
     returnTo = undefined;
-    if (!example) eventSearch.reset('Natal chart updated. Search this chart for events.');
+    researchExport.syncChart();
+    eventSearch.syncChart(natal, !example ? 'Natal chart updated. Search this chart for events.' : undefined);
     exportStudio.invalidate();
     status.textContent = resolved.kind === 'unknown-time' ? unavailableText('unknown-birth-time')
       : example ? 'Greenwich example. Edit birth details to use your own.'
@@ -796,6 +821,7 @@ export function mountObservatory(engine: EphemeraEngine) {
       return;
     }
     exportStudio.invalidate();
+    researchExport.invalidateMoment();
     selectedDate = date;
     selectedTime = time;
     queueRedraw();
